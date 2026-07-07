@@ -1,5 +1,3 @@
-// src/components/ClaimRow.tsx
-
 interface Props {
   name: string
   value: unknown
@@ -10,7 +8,6 @@ interface Props {
 
 export function ClaimRow({ name, value, description, highlight, mono }: Props) {
   const formatted = formatValue(value)
-
   return (
     <div className={`claim-row${highlight ? ' claim-row--highlight' : ''}`}>
       <div className="claim-row__meta">

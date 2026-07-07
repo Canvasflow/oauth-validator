@@ -1,0 +1,13 @@
+name = "oauth-validator"
+compatibility_date = "2025-01-01"
+
+# Worker entry point — handles /api/* via Hono, serves SPA for everything else
+main = "src/worker.ts"
+
+[assets]
+# Client-side SPA routing: unknown paths fall back to index.html
+not_found_handling = "single-page-application"
+
+# Runtime secrets — add via: wrangler secret put <NAME>
+# [vars]
+# EXAMPLE_VAR = "value"

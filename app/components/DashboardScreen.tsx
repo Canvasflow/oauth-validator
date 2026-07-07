@@ -1,20 +1,16 @@
-// src/components/DashboardScreen.tsx
-// ---------------------------------------------------------------------------
-// Rendered at /dashboard. The beforeLoad guard in router.tsx guarantees
-// tokens exist — loadTokens() is non-null here.
-// ---------------------------------------------------------------------------
-
-import { dashboardRouteApi } from '../router'
-import { TokenInspector } from './TokenInspector'
+// app/components/DashboardScreen.tsx
+import { useNavigate } from '@tanstack/react-router'
 import { clearAll, loadTokens } from '../lib/storage'
+import { TokenInspector } from './TokenInspector'
+import { SignatureValidator } from './SignatureValidator'
 
 export function DashboardScreen() {
-  const navigate = dashboardRouteApi.useNavigate()
-  const tokens = loadTokens()! // non-null guaranteed by beforeLoad guard
+  const navigate = useNavigate()
+  const tokens = loadTokens()!
 
   const handleLogout = () => {
     clearAll()
-    navigate({
+    void navigate({
       to: '/login',
       replace: true,
       search: { error: undefined, error_description: undefined },
@@ -32,7 +28,7 @@ export function DashboardScreen() {
               fill="white"
             />
           </svg>
-          <span className="dashboard-header__title">OAuth PKCE PoC</span>
+          <span className="dashboard-header__title">OAuth PKCE Validator</span>
         </div>
         <div className="dashboard-header__actions">
           <div className="status-badge status-badge--success">
@@ -50,13 +46,15 @@ export function DashboardScreen() {
           <h2 className="dashboard-intro__heading">Token Inspector</h2>
           <p className="dashboard-intro__body">
             The PKCE flow completed successfully. The access token is stored in{' '}
-            <code>sessionStorage</code> and ready to be sent as a{' '}
-            <code>Bearer</code> token to the GraphQL API. Decoded claims are shown
-            below — signature verification happens on the server, not here.
+            <code>sessionStorage</code>. Decoded claims are shown below — client-side
+            decode only. Use the Signature Verification panel to cryptographically
+            confirm the token via the Cloudflare Worker backend.
           </p>
         </div>
 
         <TokenInspector tokens={tokens} />
+
+        <SignatureValidator accessToken={tokens.accessToken} />
       </main>
     </div>
   )

@@ -141,3 +141,18 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# TanStack Router (auto-generated, rebuilt on each dev/build run)
+app/routeTree.gen.ts
+
+# Vite + Cloudflare build output
+dist/
+
+# Legacy Vinxi/TanStack Start artifacts
+.output/
+.vinxi/
+index.html.old
+app.config.timestamp_*.js
+
+# Cloudflare
+.wrangler/

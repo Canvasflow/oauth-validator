@@ -1,15 +1,9 @@
-// src/components/CallbackScreen.tsx
-// ---------------------------------------------------------------------------
-// Rendered at /callback — the URL the IdP redirects to after login.
-// Exchanges the authorization code for tokens, then navigates programmatically.
-// ---------------------------------------------------------------------------
-
 import { useEffect, useRef } from 'react'
-import { callbackRouteApi } from '../router'
+import { useNavigate } from '@tanstack/react-router'
 import { handleCallback } from '../lib/oauth'
 
 export function CallbackScreen() {
-  const navigate = callbackRouteApi.useNavigate()
+  const navigate = useNavigate()
   const hasRun = useRef(false)
 
   useEffect(() => {
@@ -20,9 +14,9 @@ export function CallbackScreen() {
 
     handleCallback().then((result) => {
       if (result.ok) {
-        navigate({ to: '/dashboard', replace: true })
+        void navigate({ to: '/dashboard', replace: true })
       } else {
-        navigate({
+        void navigate({
           to: '/login',
           replace: true,
           search: {

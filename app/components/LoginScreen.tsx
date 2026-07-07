@@ -1,17 +1,17 @@
-// src/components/LoginScreen.tsx
 import { useState } from 'react'
-import { loginRouteApi } from '../router'
+import { getRouteApi } from '@tanstack/react-router'
 import { login } from '../lib/oauth'
 
+const routeApi = getRouteApi('/login')
+
 export function LoginScreen() {
-  // Typed search params from the route definition — no prop drilling needed.
-  const { error, error_description } = loginRouteApi.useSearch()
+  const { error, error_description } = routeApi.useSearch()
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async () => {
     setLoading(true)
     try {
-      await login() // redirects away — loading stays true until navigation
+      await login()
     } catch (e) {
       console.error('Login initiation failed:', e)
       setLoading(false)
@@ -30,7 +30,7 @@ export function LoginScreen() {
                 fill="white"
               />
             </svg>
-            <span className="logo__name">OAuth PKCE PoC</span>
+            <span className="logo__name">OAuth PKCE Validator</span>
           </div>
           <h1 className="login-card__title">Sign in</h1>
           <p className="login-card__subtitle">
