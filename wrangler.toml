@@ -1,8 +1,13 @@
 name = "oauth-validator"
 compatibility_date = "2025-01-01"
-pages_build_output_dir = ".output/public"
 
-# Environment variables that need to be available at runtime on the Worker.
-# Add secrets via: wrangler pages secret put <NAME>
+# Worker entry point — handles /api/* via Hono, serves SPA for everything else
+main = "src/worker.ts"
+
+[assets]
+# Client-side SPA routing: unknown paths fall back to index.html
+not_found_handling = "single-page-application"
+
+# Runtime secrets — add via: wrangler secret put <NAME>
 # [vars]
 # EXAMPLE_VAR = "value"

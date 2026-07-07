@@ -4,49 +4,29 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vinxi dev",
-    "build": "vinxi build",
-    "start": "vinxi start",
-    "deploy": "npm run build && wrangler pages deploy .output/public",
-    "postinstall": "npm dedupe"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
-    "@tanstack/react-router": "1.120.19",
-    "@tanstack/react-start": "1.120.19",
-    "@tanstack/zod-adapter": "1.120.3",
+    "@tanstack/react-router": "^1.170.17",
+    "@tanstack/zod-adapter": "^1.167.0",
     "hono": "^4.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.43.1",
     "@cloudflare/workers-types": "^4.20241022.0",
+    "@tanstack/router-plugin": "^1.168.19",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^6.0.3",
     "typescript": "^5.5.3",
-    "vite": "^6.3.0",
-    "vinxi": "0.5.3",
-    "wrangler": "^3.80.0"
-  },
-  "overrides": {
-    "@tanstack/react-router": "1.120.19",
-    "@tanstack/router-core": "1.120.19",
-    "@tanstack/history": "1.120.17",
-    "@tanstack/router-utils": "1.120.17",
-    "@tanstack/router-generator": "1.120.20",
-    "@tanstack/virtual-file-routes": "1.120.17",
-    "@tanstack/react-start-server": "1.120.20",
-    "@tanstack/react-start-client": "1.120.20",
-    "@tanstack/start-api-routes": "1.120.19",
-    "@tanstack/start-server-core": "1.120.19",
-    "@tanstack/start-client-core": "1.120.19",
-    "@tanstack/start-plugin-core": "1.120.17",
-    "@tanstack/react-start-plugin": "1.120.17",
-    "@tanstack/server-functions-plugin": "1.120.17",
-    "@tanstack/directive-functions-plugin": "1.120.17",
-    "@tanstack/start-server-functions-client": "1.120.19",
-    "@tanstack/start-server-functions-fetcher": "1.120.19",
-    "@tanstack/start-server-functions-server": "1.120.17",
-    "@tanstack/router-plugin": "1.120.20"
+    "vite": "^8.0.0",
+    "wrangler": "^4.107.1"
   }
 }
