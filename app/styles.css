@@ -731,6 +731,7 @@ code {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 .settings-dialog {
+  min-height: 500px;
   width: min(560px, calc(100vw - 32px));
   max-height: calc(100dvh - 64px);
   background: var(--surface);
