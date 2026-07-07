@@ -2,7 +2,7 @@
 // OAuth 2.0 Authorization Code + PKCE flow — pure client-side.
 // RFC 6749 + RFC 7636. No libraries.
 
-import { oauthConfig } from './config'
+import { getOAuthConfig } from './config'
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce'
 import { saveAuthRequest, loadAuthRequest, clearAuthRequest, saveTokens } from './storage'
 
@@ -20,6 +20,9 @@ interface TokenResponse {
 // ── Step 1: Initiate login — redirect to IdP ──────────────────────────────
 
 export async function login(): Promise<void> {
+  const config = getOAuthConfig()
+  if (!config) throw new Error('OAuth not configured. Click the settings icon to configure your IdP.')
+
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
   const state = generateState()
@@ -27,18 +30,18 @@ export async function login(): Promise<void> {
   saveAuthRequest(state, codeVerifier)
 
   const params = new URLSearchParams({
-    response_type:          'code',
-    client_id:              oauthConfig.clientId,
-    redirect_uri:           oauthConfig.redirectUri,
-    scope:                  oauthConfig.scope,
+    response_type:         'code',
+    client_id:             config.clientId,
+    redirect_uri:          config.redirectUri,
+    scope:                 config.scope,
     state,
-    code_challenge:         codeChallenge,
-    code_challenge_method:  'S256',
+    code_challenge:        codeChallenge,
+    code_challenge_method: 'S256',
   })
 
-  if (oauthConfig.audience) params.set('audience', oauthConfig.audience)
+  if (config.audience) params.set('audience', config.audience)
 
-  window.location.href = `${oauthConfig.authorizationEndpoint}?${params.toString()}`
+  window.location.href = `${config.authorizationEndpoint}?${params.toString()}`
 }
 
 // ── Step 2: Handle the callback ───────────────────────────────────────────
@@ -109,15 +112,25 @@ export async function handleCallback(): Promise<CallbackResult> {
 // ── Token endpoint ────────────────────────────────────────────────────────
 
 async function exchangeCode(code: string, codeVerifier: string): Promise<TokenResponse> {
+  const config = getOAuthConfig()
+  if (!config) {
+    return {
+      access_token: '',
+      token_type: '',
+      error: 'not_configured',
+      error_description: 'OAuth config not found. Please configure your IdP settings.',
+    }
+  }
+
   const body = new URLSearchParams({
     grant_type:    'authorization_code',
     code,
-    redirect_uri:  oauthConfig.redirectUri,
-    client_id:     oauthConfig.clientId,
+    redirect_uri:  config.redirectUri,
+    client_id:     config.clientId,
     code_verifier: codeVerifier,
   })
 
-  const response = await fetch(oauthConfig.tokenEndpoint, {
+  const response = await fetch(config.tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
     body: body.toString(),
