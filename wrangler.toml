@@ -5,7 +5,7 @@ compatibility_date = "2025-01-01"
 main = "src/worker.ts"
 
 [assets]
-# Client-side SPA routing: unknown paths fall back to index.html
+binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 # Runtime secrets — add via: wrangler secret put <NAME>
