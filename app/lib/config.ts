@@ -1,7 +1,8 @@
 // app/lib/config.ts
-// All OAuth parameters are read from environment variables (VITE_ prefix for
-// client-side exposure via import.meta.env). Copy .env.example to .env.local
-// and fill in your IdP values — .env.local is gitignored.
+// OAuth config is stored in localStorage and managed via the Settings dialog.
+// No env vars required — the user fills in IdP details at runtime.
+
+const STORAGE_KEY = 'oauth_config'
 
 export interface OAuthConfig {
   issuer: string
@@ -13,27 +14,33 @@ export interface OAuthConfig {
   audience?: string
 }
 
-function required(key: string): string {
-  const value = import.meta.env[key] as string | undefined
-  if (!value) {
-    throw new Error(
-      `Missing required environment variable: ${key}\n` +
-        'Copy .env.example to .env.local and fill in your IdP values.'
-    )
+export function getOAuthConfig(): OAuthConfig | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as OAuthConfig
+  } catch {
+    return null
   }
-  return value
 }
 
-function optional(key: string): string | undefined {
-  return (import.meta.env[key] as string | undefined) || undefined
+export function saveOAuthConfig(config: OAuthConfig): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
 }
 
-export const oauthConfig: OAuthConfig = {
-  issuer:                required('VITE_OAUTH_ISSUER'),
-  authorizationEndpoint: required('VITE_OAUTH_AUTHORIZATION_ENDPOINT'),
-  tokenEndpoint:         required('VITE_OAUTH_TOKEN_ENDPOINT'),
-  clientId:              required('VITE_OAUTH_CLIENT_ID'),
-  redirectUri:           required('VITE_OAUTH_REDIRECT_URI'),
-  scope:                 required('VITE_OAUTH_SCOPE'),
-  audience:              optional('VITE_OAUTH_AUDIENCE'),
+export function resetOAuthConfig(): void {
+  localStorage.removeItem(STORAGE_KEY)
+}
+
+export function isConfigured(): boolean {
+  const cfg = getOAuthConfig()
+  if (!cfg) return false
+  return !!(
+    cfg.issuer &&
+    cfg.authorizationEndpoint &&
+    cfg.tokenEndpoint &&
+    cfg.clientId &&
+    cfg.redirectUri &&
+    cfg.scope
+  )
 }
