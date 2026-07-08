@@ -12,6 +12,7 @@ export interface OAuthConfig {
   redirectUri: string
   scope: string
   audience?: string
+  jwksUri?: string
 }
 
 export function getOAuthConfig(): OAuthConfig | null {

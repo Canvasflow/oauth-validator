@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   issuer:                '',
   authorizationEndpoint: '',
   tokenEndpoint:         '',
+  jwksUri:               '',
   clientId:              '',
   redirectUri:           typeof window !== 'undefined' ? `${window.location.origin}/callback` : '',
   scope:                 'openid profile email',
@@ -23,6 +24,7 @@ export function SettingsDialog({ onClose }: Props) {
     issuer:                existing?.issuer                ?? EMPTY_FORM.issuer,
     authorizationEndpoint: existing?.authorizationEndpoint ?? EMPTY_FORM.authorizationEndpoint,
     tokenEndpoint:         existing?.tokenEndpoint         ?? EMPTY_FORM.tokenEndpoint,
+    jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
     clientId:              existing?.clientId              ?? EMPTY_FORM.clientId,
     redirectUri:           existing?.redirectUri           ?? EMPTY_FORM.redirectUri,
     scope:                 existing?.scope                 ?? EMPTY_FORM.scope,
@@ -47,6 +49,7 @@ export function SettingsDialog({ onClose }: Props) {
       issuer:                form.issuer.trim(),
       authorizationEndpoint: form.authorizationEndpoint.trim(),
       tokenEndpoint:         form.tokenEndpoint.trim(),
+      jwksUri:               form.jwksUri.trim() || undefined,
       clientId:              form.clientId.trim(),
       redirectUri:           form.redirectUri.trim(),
       scope:                 form.scope.trim(),
@@ -96,6 +99,8 @@ export function SettingsDialog({ onClose }: Props) {
             onChange={set('authorizationEndpoint')} placeholder="https://your-idp.example.com/authorize" />
           <Field label="Token endpoint" id="s-token-ep" value={form.tokenEndpoint}
             onChange={set('tokenEndpoint')} placeholder="https://your-idp.example.com/oauth/token" />
+          <Field label="JWKS URI (optional)" id="s-jwks" value={form.jwksUri}
+            onChange={set('jwksUri')} placeholder="https://your-idp.example.com/.well-known/jwks.json" mono />
           <Field label="Client ID" id="s-client-id" value={form.clientId}
             onChange={set('clientId')} placeholder="your-client-id" mono />
           <Field label="Redirect URI" id="s-redirect" value={form.redirectUri}

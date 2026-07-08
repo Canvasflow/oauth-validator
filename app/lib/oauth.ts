@@ -4,7 +4,7 @@
 
 import { getOAuthConfig } from './config'
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce'
-import { saveAuthRequest, loadAuthRequest, clearAuthRequest, saveTokens } from './storage'
+import { saveAuthRequest, loadAuthRequest, clearAuthRequest, saveTokens, type StoredTokens } from './storage'
 
 interface TokenResponse {
   access_token: string
@@ -107,6 +107,62 @@ export async function handleCallback(): Promise<CallbackResult> {
   window.history.replaceState({}, document.title, clean.pathname)
 
   return { ok: true }
+}
+
+// ── Step 3: Refresh tokens ────────────────────────────────────────────────
+
+export type RefreshResult =
+  | { ok: true; tokens: StoredTokens }
+  | { ok: false; error: string; errorDescription?: string }
+
+export async function refreshTokens(refreshToken: string): Promise<RefreshResult> {
+  const config = getOAuthConfig()
+  if (!config) {
+    return {
+      ok: false,
+      error: 'not_configured',
+      errorDescription: 'OAuth config not found. Please configure your IdP settings.',
+    }
+  }
+
+  const body = new URLSearchParams({
+    grant_type:    'refresh_token',
+    refresh_token: refreshToken,
+    client_id:     config.clientId,
+  })
+
+  try {
+    const response = await fetch(config.tokenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: body.toString(),
+    })
+
+    const data = (await response.json()) as TokenResponse
+
+    if (!response.ok || data.error) {
+      return {
+        ok: false,
+        error: data.error ?? `http_${response.status}`,
+        errorDescription: data.error_description ?? `Token endpoint returned ${response.status}`,
+      }
+    }
+
+    const newTokens: StoredTokens = {
+      accessToken:  data.access_token,
+      idToken:      data.id_token      ?? undefined,
+      // Preserve the existing refresh token if the IdP doesn't rotate it
+      refreshToken: data.refresh_token ?? refreshToken,
+    }
+    saveTokens(newTokens)
+    return { ok: true, tokens: newTokens }
+  } catch (e) {
+    return {
+      ok: false,
+      error: 'network_error',
+      errorDescription: (e as Error).message,
+    }
+  }
 }
 
 // ── Token endpoint ────────────────────────────────────────────────────────

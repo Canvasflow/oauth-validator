@@ -865,3 +865,50 @@ code {
   font-family: var(--font-mono);
   font-size: 0.82rem;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* Token Refresh                                                                */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.token-refresh {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+}
+
+.token-refresh__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.token-refresh__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.token-refresh__desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 520px;
+}
+
+.token-refresh__body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .token-refresh__header { flex-direction: column; }
+  .token-refresh__header .btn { align-self: flex-start; }
+}

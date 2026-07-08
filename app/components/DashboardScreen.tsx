@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { clearAll, loadTokens } from '../lib/storage'
+import { clearAll, loadTokens, type StoredTokens } from '../lib/storage'
 import { TokenInspector } from './TokenInspector'
 import { SignatureValidator } from './SignatureValidator'
+import { TokenRefresh } from './TokenRefresh'
 import { SettingsDialog } from './SettingsDialog'
 
 export function DashboardScreen() {
   const navigate = useNavigate()
-  const tokens = loadTokens()!
+  const [tokens, setTokens] = useState<StoredTokens>(() => loadTokens()!)
   const [showSettings, setShowSettings] = useState(false)
 
   const handleLogout = () => {
@@ -68,6 +69,8 @@ export function DashboardScreen() {
           <TokenInspector tokens={tokens} />
 
           <SignatureValidator accessToken={tokens.accessToken} />
+
+          <TokenRefresh tokens={tokens} onRefreshed={setTokens} />
         </main>
       </div>
     </>

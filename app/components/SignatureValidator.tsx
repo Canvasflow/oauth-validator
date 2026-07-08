@@ -4,7 +4,8 @@
 // which fetches the issuer's JWKS and cryptographically verifies the
 // signature. Shows the result and the normalized entitlements.
 // ---------------------------------------------------------------------------
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getOAuthConfig } from '../lib/config'
 
 interface SignatureResult {
   valid: boolean
@@ -28,14 +29,23 @@ export function SignatureValidator({ accessToken }: Props) {
   const [status, setStatus] = useState<Status>('idle')
   const [result, setResult] = useState<SignatureResult | null>(null)
 
+  useEffect(() => {
+    setStatus('idle')
+    setResult(null)
+  }, [accessToken])
+
   const handleValidate = async () => {
     setStatus('loading')
     setResult(null)
+    const config = getOAuthConfig()
     try {
       const res = await fetch('/api/validate/signature', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: accessToken }),
+        body: JSON.stringify({
+          token: accessToken,
+          ...(config?.jwksUri ? { jwksUri: config.jwksUri } : {}),
+        }),
       })
       const data = (await res.json()) as SignatureResult
       setResult(data)

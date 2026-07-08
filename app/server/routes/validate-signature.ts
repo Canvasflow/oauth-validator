@@ -29,17 +29,20 @@ function decodePayload(token: string): Record<string, unknown> | null {
 }
 
 export async function handleValidateSignature(c: Context) {
-  let body: { token?: unknown }
+  let body: { token?: unknown; jwksUri?: unknown }
   try {
-    body = await c.req.json<{ token?: unknown }>()
+    body = await c.req.json<{ token?: unknown; jwksUri?: unknown }>()
   } catch {
     return c.json({ valid: false, error: 'Request body must be JSON' }, 400)
   }
 
-  const { token } = body
+  const { token, jwksUri: overrideJwksUri } = body
   if (!token || typeof token !== 'string') {
     return c.json({ valid: false, error: 'Missing or invalid `token` field' }, 400)
   }
+
+  const explicitJwksUri =
+    typeof overrideJwksUri === 'string' && overrideJwksUri.trim() ? overrideJwksUri.trim() : undefined
 
   const payload = decodePayload(token)
   if (!payload) {
@@ -47,11 +50,18 @@ export async function handleValidateSignature(c: Context) {
   }
 
   const iss = payload.iss as string | undefined
-  if (!iss) {
-    return c.json({ valid: false, error: 'Token has no `iss` claim — cannot locate JWKS' }, 400)
-  }
 
-  const jwksUri = await resolveJwksUri(iss)
+  let jwksUri: string
+  if (explicitJwksUri) {
+    jwksUri = explicitJwksUri
+  } else if (iss) {
+    jwksUri = await resolveJwksUri(iss)
+  } else {
+    return c.json({
+      valid: false,
+      error: 'Token has no `iss` claim and no JWKS URI was provided — cannot locate JWKS',
+    }, 400)
+  }
   const result = await verifyJwtSignature(token, jwksUri)
 
   if (!result.valid) {
