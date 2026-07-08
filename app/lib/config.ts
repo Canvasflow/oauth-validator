@@ -4,6 +4,8 @@
 
 const STORAGE_KEY = 'oauth_config'
 
+export type VerificationMethod = 'jwks' | 'secret'
+
 export interface OAuthConfig {
   issuer: string
   authorizationEndpoint: string
@@ -12,6 +14,9 @@ export interface OAuthConfig {
   redirectUri: string
   scope: string
   audience?: string
+  verificationMethod: VerificationMethod
+  jwksUri?: string
+  secret?: string
 }
 
 export function getOAuthConfig(): OAuthConfig | null {

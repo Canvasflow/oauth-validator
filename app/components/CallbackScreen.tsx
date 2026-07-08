@@ -7,8 +7,6 @@ export function CallbackScreen() {
   const hasRun = useRef(false)
 
   useEffect(() => {
-    // StrictMode double-invokes effects in dev; the auth code is single-use,
-    // so a second exchange would fail with invalid_grant.
     if (hasRun.current) return
     hasRun.current = true
 
@@ -19,21 +17,21 @@ export function CallbackScreen() {
         void navigate({
           to: '/login',
           replace: true,
-          search: {
-            error: result.error,
-            error_description: result.errorDescription,
-          },
+          search: { error: result.error, error_description: result.errorDescription },
         })
       }
     })
   }, [navigate])
 
   return (
-    <div className="screen screen--callback">
-      <div className="callback-card">
-        <span className="spinner spinner--large" aria-hidden="true" />
-        <p className="callback-card__text">Completing sign-in…</p>
-        <p className="callback-card__sub">Exchanging authorization code for tokens</p>
+    <div className="min-h-screen flex items-center justify-center p-6 bg-canvas">
+      <div className="flex flex-col items-center gap-4 text-center">
+        <span
+          className="inline-block w-10 h-10 border-[3px] border-rim2 border-t-brand rounded-full animate-spin"
+          aria-hidden="true"
+        />
+        <p className="text-lg font-semibold text-ink">Completing sign-in…</p>
+        <p className="text-sm text-ink2">Exchanging authorization code for tokens</p>
       </div>
     </div>
   )
