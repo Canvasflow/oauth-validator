@@ -150,7 +150,7 @@ function EntitlementsSection({ payload }: { payload: Record<string, unknown> }) 
           {source !== 'entitlements' && source !== null && (
             <Note variant="info">Resolved from <code>{source}</code> claim (normalized to <code>entitlements</code>).</Note>
           )}
-          <ClaimRow name="entitlements" value={values} description="Canvasflow resource IDs — normalized from cf:entitlements / resources / entitlements" highlight={values.length === 0} />
+          <ClaimRow name="entitlements" value={values} description="Canvasflow resource IDs — normalized from cf:entitlements / resources / entitlements" highlight={values.length === 0} pills />
         </>
       ) : (
         <Note variant="warn">No entitlement claim found (<code>cf:entitlements</code>, <code>resources</code>, or <code>entitlements</code>). The pre-token hook may not be configured.</Note>

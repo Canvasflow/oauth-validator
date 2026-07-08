@@ -122,11 +122,17 @@ export function SignatureValidator({ accessToken }: Props) {
                   )}
                 </span>
               }>
-                <span className="text-sm text-ink">
-                  {result.entitlements.length > 0
-                    ? result.entitlements.join(', ')
-                    : <em className="text-ink3 not-italic">none</em>}
-                </span>
+                {result.entitlements.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {result.entitlements.map((item, i) => (
+                      <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand/10 text-brand border border-brand/20">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <em className="text-sm text-ink3 not-italic">none</em>
+                )}
               </DetailRow>
             )}
           </div>

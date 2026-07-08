@@ -39,7 +39,7 @@ export function DashboardScreen() {
               className="rounded-md"
             />
             <span className="font-mono text-sm text-ink2">
-              OAuth PKCE Validator
+              Canvasflow OAuth Validator
             </span>
           </div>
 
