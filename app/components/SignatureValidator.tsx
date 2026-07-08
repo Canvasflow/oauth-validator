@@ -38,14 +38,20 @@ export function SignatureValidator({ accessToken }: Props) {
     setStatus('loading')
     setResult(null)
     const config = getOAuthConfig()
+
+    const requestBody: Record<string, string> = { token: accessToken }
+    if (config?.verificationMethod === 'secret' && config.secret) {
+      requestBody.verificationMethod = 'secret'
+      requestBody.secret = config.secret
+    } else if (config?.jwksUri) {
+      requestBody.jwksUri = config.jwksUri
+    }
+
     try {
       const res = await fetch('/api/validate/signature', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: accessToken,
-          ...(config?.jwksUri ? { jwksUri: config.jwksUri } : {}),
-        }),
+        body: JSON.stringify(requestBody),
       })
       const data = (await res.json()) as SignatureResult
       setResult(data)

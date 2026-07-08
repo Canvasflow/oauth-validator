@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, type OAuthConfig } from '../lib/config'
+import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, type OAuthConfig, type VerificationMethod } from '../lib/config'
 
 interface Props {
   onClose: () => void
@@ -9,26 +9,31 @@ const EMPTY_FORM = {
   issuer:                '',
   authorizationEndpoint: '',
   tokenEndpoint:         '',
-  jwksUri:               '',
   clientId:              '',
   redirectUri:           typeof window !== 'undefined' ? `${window.location.origin}/callback` : '',
   scope:                 'openid profile email',
   audience:              '',
+  verificationMethod:    'jwks' as VerificationMethod,
+  jwksUri:               '',
+  secret:                '',
 }
 
 export function SettingsDialog({ onClose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const [showSecret, setShowSecret] = useState(false)
 
   const existing = getOAuthConfig()
   const [form, setForm] = useState({
     issuer:                existing?.issuer                ?? EMPTY_FORM.issuer,
     authorizationEndpoint: existing?.authorizationEndpoint ?? EMPTY_FORM.authorizationEndpoint,
     tokenEndpoint:         existing?.tokenEndpoint         ?? EMPTY_FORM.tokenEndpoint,
-    jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
     clientId:              existing?.clientId              ?? EMPTY_FORM.clientId,
     redirectUri:           existing?.redirectUri           ?? EMPTY_FORM.redirectUri,
     scope:                 existing?.scope                 ?? EMPTY_FORM.scope,
     audience:              existing?.audience              ?? EMPTY_FORM.audience,
+    verificationMethod:    existing?.verificationMethod    ?? EMPTY_FORM.verificationMethod,
+    jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
+    secret:                existing?.secret               ?? EMPTY_FORM.secret,
   })
 
   useEffect(() => {
@@ -44,16 +49,21 @@ export function SettingsDialog({ onClose }: Props) {
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
 
+  const setMethod = (e: React.ChangeEvent<HTMLSelectElement>) =>
+    setForm(prev => ({ ...prev, verificationMethod: e.target.value as VerificationMethod }))
+
   const handleSave = () => {
     const config: OAuthConfig = {
       issuer:                form.issuer.trim(),
       authorizationEndpoint: form.authorizationEndpoint.trim(),
       tokenEndpoint:         form.tokenEndpoint.trim(),
-      jwksUri:               form.jwksUri.trim() || undefined,
       clientId:              form.clientId.trim(),
       redirectUri:           form.redirectUri.trim(),
       scope:                 form.scope.trim(),
       audience:              form.audience.trim() || undefined,
+      verificationMethod:    form.verificationMethod,
+      jwksUri:               form.verificationMethod === 'jwks'    ? (form.jwksUri.trim() || undefined)  : undefined,
+      secret:                form.verificationMethod === 'secret'  ? (form.secret.trim() || undefined)   : undefined,
     }
     saveOAuthConfig(config)
     dialogRef.current?.close()
@@ -62,6 +72,7 @@ export function SettingsDialog({ onClose }: Props) {
   const handleReset = () => {
     resetOAuthConfig()
     setForm({ ...EMPTY_FORM, redirectUri: `${window.location.origin}/callback` })
+    setShowSecret(false)
   }
 
   const isValid = !!(
@@ -70,7 +81,8 @@ export function SettingsDialog({ onClose }: Props) {
     form.tokenEndpoint &&
     form.clientId &&
     form.redirectUri &&
-    form.scope
+    form.scope &&
+    (form.verificationMethod === 'jwks' || form.secret.trim())
   )
 
   return (
@@ -93,14 +105,14 @@ export function SettingsDialog({ onClose }: Props) {
         </p>
 
         <div className="settings-fields">
+          <p className="settings-section-label">OAuth Provider</p>
+
           <Field label="Issuer" id="s-issuer" value={form.issuer}
             onChange={set('issuer')} placeholder="https://your-idp.example.com" />
           <Field label="Authorization endpoint" id="s-auth-ep" value={form.authorizationEndpoint}
             onChange={set('authorizationEndpoint')} placeholder="https://your-idp.example.com/authorize" />
           <Field label="Token endpoint" id="s-token-ep" value={form.tokenEndpoint}
             onChange={set('tokenEndpoint')} placeholder="https://your-idp.example.com/oauth/token" />
-          <Field label="JWKS URI (optional)" id="s-jwks" value={form.jwksUri}
-            onChange={set('jwksUri')} placeholder="https://your-idp.example.com/.well-known/jwks.json" mono />
           <Field label="Client ID" id="s-client-id" value={form.clientId}
             onChange={set('clientId')} placeholder="your-client-id" mono />
           <Field label="Redirect URI" id="s-redirect" value={form.redirectUri}
@@ -109,6 +121,57 @@ export function SettingsDialog({ onClose }: Props) {
             onChange={set('scope')} placeholder="openid profile email" mono />
           <Field label="Audience (optional)" id="s-audience" value={form.audience}
             onChange={set('audience')} placeholder="your-api-identifier" mono />
+
+          <p className="settings-section-label">Token Verification</p>
+
+          <div className="settings-field">
+            <label className="settings-field__label" htmlFor="s-method">Method</label>
+            <select
+              className="settings-field__input settings-field__select"
+              id="s-method"
+              value={form.verificationMethod}
+              onChange={setMethod}
+            >
+              <option value="jwks">JWKS (asymmetric key — recommended)</option>
+              <option value="secret">Shared secret (HMAC)</option>
+            </select>
+          </div>
+
+          {form.verificationMethod === 'jwks' && (
+            <Field label="JWKS URI (optional)" id="s-jwks" value={form.jwksUri}
+              onChange={set('jwksUri')} placeholder="https://your-idp.example.com/.well-known/jwks.json" mono />
+          )}
+
+          {form.verificationMethod === 'secret' && (
+            <div className="settings-field">
+              <label className="settings-field__label" htmlFor="s-secret">
+                Shared secret
+              </label>
+              <div className="settings-field__secret-row">
+                <input
+                  className="settings-field__input settings-field__input--mono"
+                  id="s-secret"
+                  type={showSecret ? 'text' : 'password'}
+                  value={form.secret}
+                  onChange={set('secret')}
+                  placeholder="your-hmac-secret"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  className="settings-field__secret-toggle"
+                  onClick={() => setShowSecret(v => !v)}
+                  aria-label={showSecret ? 'Hide secret' : 'Show secret'}
+                >
+                  {showSecret ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <p className="settings-field__hint">
+                Stored in <code>localStorage</code>. Only use in dev/test environments.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

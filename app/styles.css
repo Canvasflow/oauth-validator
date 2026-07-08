@@ -866,6 +866,65 @@ code {
   font-size: 0.82rem;
 }
 
+.settings-field__select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237a82a0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+  cursor: pointer;
+}
+.settings-field__select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.settings-section-label {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+.settings-section-label:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.settings-field__secret-row {
+  display: flex;
+  gap: 8px;
+}
+.settings-field__secret-row .settings-field__input {
+  flex: 1;
+}
+
+.settings-field__secret-toggle {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-md);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 0 12px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.settings-field__secret-toggle:hover { background: var(--border); color: var(--text); }
+
+.settings-field__hint {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 /* Token Refresh                                                                */
 /* ─────────────────────────────────────────────────────────────────────────── */

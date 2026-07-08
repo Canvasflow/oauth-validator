@@ -63,6 +63,62 @@ export interface VerifyResult {
   error?: string
 }
 
+const HMAC_HASH: Record<string, string> = {
+  HS256: 'SHA-256',
+  HS384: 'SHA-384',
+  HS512: 'SHA-512',
+}
+
+export async function verifyJwtWithSecret(token: string, secret: string): Promise<VerifyResult> {
+  const parts = token.split('.')
+  if (parts.length !== 3) return { valid: false, error: 'Invalid JWT structure (expected 3 segments)' }
+
+  const [headerSeg, payloadSeg, signatureSeg] = parts
+
+  let header: { alg?: string; kid?: string }
+  try {
+    header = JSON.parse(b64Decode(headerSeg)) as { alg?: string; kid?: string }
+  } catch {
+    return { valid: false, error: 'Failed to decode JWT header' }
+  }
+
+  const alg = header.alg ?? 'HS256'
+  const kid = header.kid
+  const hashAlg = HMAC_HASH[alg]
+
+  if (!hashAlg) {
+    return {
+      valid: false,
+      algorithm: alg,
+      keyId: kid,
+      error: `${alg} is not an HMAC algorithm. For asymmetric tokens select JWKS verification.`,
+    }
+  }
+
+  try {
+    const keyData = new TextEncoder().encode(secret)
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: hashAlg },
+      false,
+      ['verify'],
+    )
+
+    const signingInput = new TextEncoder().encode(`${headerSeg}.${payloadSeg}`)
+    const signature = base64UrlToBytes(signatureSeg)
+    const valid = await crypto.subtle.verify('HMAC', cryptoKey, signature, signingInput)
+
+    if (!valid) {
+      return { valid: false, algorithm: alg, keyId: kid, error: 'Signature verification failed — secret may be incorrect' }
+    }
+
+    return { valid: true, algorithm: alg, keyId: kid }
+  } catch (e) {
+    return { valid: false, algorithm: alg, keyId: kid, error: `Verification error: ${(e as Error).message}` }
+  }
+}
+
 export async function verifyJwtSignature(
   token: string,
   jwksUri: string
