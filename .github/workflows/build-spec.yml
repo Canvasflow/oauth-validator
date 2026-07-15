@@ -1,0 +1,38 @@
+name: Build Spec PDF
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/spec/version.tex'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build PDF
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install TeX Live
+        uses: xu-cheng/texlive-action@v2
+        with:
+          scheme: full
+
+      - name: Build PDF
+        run: make pdf
+        working-directory: docs
+
+      - name: Commit built PDF
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=$(grep -oP '(?<=\\newcommand\{\\specversion\}\{)[^}]+' docs/spec/version.tex)
+          git add docs/build/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "docs: build spec PDF v${VERSION}"
+            git push
+          fi
