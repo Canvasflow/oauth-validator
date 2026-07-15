@@ -1,0 +1,120 @@
+\section{Overview}
+
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Scope}
+
+This specification governs the integration of a tenant's Single Sign-On (SSO)
+Identity Provider (IdP) with Canvasflow. It covers the Progressive Web Application (PWA)
+and its backing GraphQL API server, defines the requirements a tenant MUST satisfy to
+issue access tokens that the Canvasflow Resource Server will accept, the entitlement
+model by which content access is granted, the onboarding process and mandatory
+validation gate, and the guarantees Canvasflow provides in return.
+
+This specification is version 1.0.0 and is the single canonical reference for 
+all new integrations.
+
+\subsection{Division of Trust}
+The architecture establishes a clean, auditable boundary between two parties, each
+responsible for exactly the functions they own. This boundary follows the role
+definitions of \href{https://datatracker.ietf.org/doc/html/rfc6749#section-1.1}{RFC~6749~\S1.1.}
+
+\textbf{The tenant operates the Authorization Server.} All authentication decisions
+(credential verification, MFA, session management, social connections) happen entirely
+within the tenant's IdP. All authorization decisions --- which users hold which
+entitlements, when a session is created or revoked --- are the tenant's responsibility.
+The tenant signs every token with keys or secrets they control. Canvasflow never
+participates in authentication and never inspects a user's credentials.
+
+
+\textbf{Canvasflow operates a pure Resource Server} \href{https://datatracker.ietf.org/doc/html/rfc6749#section-1.1}{\textbf{RFC~6749~\S1.1.}} The Canvasflow
+GraphQL server does exactly two things: (a)~validate the cryptographic signature and
+required claims of every incoming JWT access token, and (b)~return content gated by the
+verified entitlement claim. It does not revoke or invalidate tokens, does not maintain
+a token blocklist, does not call the tenant IdP at request time (JWKS fetching is the
+only exception, and it uses a server-side cache), makes no authorization decision of its
+own --- it only \emph{enforces} decisions the tenant's Authorization Server already sealed
+into the signed token, and stores no user accounts, passwords, or sessions.
+
+The signed JWT access token is the sole interface between the two systems. Its signature
+is the trust anchor. The Resource Server needs nothing else.
+
+\subsection{The Flow in One Sentence}
+
+A tenant's user authenticates via OAuth~2.0 Authorization Code flow with PKCE \linebreak
+(\href{https://datatracker.ietf.org/doc/html/rfc6749#section-4.1}{RFC~6749~\S4.1} + 
+\href{https://datatracker.ietf.org/doc/html/rfc7636}{RFC~7636}), receiving a JWT access token 
+\href{https://datatracker.ietf.org/doc/html/rfc9068}{RFC~9068} whose entitlement
+claim was pre-populated by the tenant's IdP hook with Canvasflow resource identifiers
+mapped from the user's internal entitlements before signing --- and the Canvasflow
+GraphQL server validates that token's signature and claims on every request, gating
+content strictly by the verified entitlement set without any further call to the tenant.
+
+\pagebreak
+
+\subsection{Out of Scope}\label{sec:out-of-scope}
+
+The following items are explicitly out of scope for this specification and for the
+Canvasflow Resource Server in its current version:
+
+\begin{itemize}
+  \item \textbf{Token revocation.} Canvasflow has no revocation endpoint, no token
+    blocklist, and no introspection endpoint. Revocation is the Authorization Server's
+    responsibility. The maximum exposure window for a revoked access is bounded by the
+    token's \texttt{exp} claim, which MUST NOT exceed 3600~seconds.
+
+  \item \textbf{Server-side entitlement mapping.} In this version, the
+    tenant owns and executes all mapping between their internal identifiers and
+    Canvasflow resource IDs. Canvasflow never performs this mapping at runtime.
+
+  \item \textbf{User provisioning and SCIM sync.} Canvasflow does not accept SCIM
+    provisioning requests and does not maintain a user directory of tenant users.
+
+  \item \textbf{Authorization logic on the Canvasflow side.} The Canvasflow server
+    enforces entitlements carried in the token. It invents no additional access rules.
+
+  \item \textbf{Multi-factor authentication (MFA) enforcement.} MFA is the tenant's
+    domain. Canvasflow has no visibility into or control over the tenant's authentication
+    strength requirements.
+\end{itemize}
+
+\pagebreak
+
+\subsection{Architecture Sequence Diagrams}
+
+The following diagrams document the three phases of the architecture: the 
+one-time onboarding setup, the per-user authentication flow, and the 
+per-request validation flow. All claim names and value formats reflect 
+the requirements of this specification(\hyperref[sec:entitlement-mapping]{\S4}).
+
+\subsubsection{Onboarding (One-Time, Out-of-Band)}
+
+\begin{figure}[ht!]
+    \centering % Centers the image horizontally
+    \includegraphics[width=1\textwidth]{on-boarding-diagram.png} % Injects and resizes the image
+    \caption{Tenant Onboarding Sequence Diagram} % Caption for the image
+    \label{fig:on-boarding} % Used for cross-referencing
+\end{figure}
+
+\pagebreak
+
+\subsubsection{Authentication Time (Per-User Login)}
+
+\begin{figure}[ht!]
+    \centering % Centers the image horizontally
+    \includegraphics[width=1\textwidth]{authentication-diagram.png} % Injects and resizes the image
+    \caption{Tenant Authentication Sequence Diagram} % Caption for the image
+    \label{fig:authentication} % Used for cross-referencing
+\end{figure}
+
+\pagebreak
+
+\subsubsection{Request Time (Per-API Call)}
+
+\begin{figure}[ht!]
+    \centering % Centers the image horizontally
+    \includegraphics[width=1\textwidth]{request-diagram.png} % Injects and resizes the image
+    \caption{Tenant Request Sequence Diagram} % Caption for the image
+    \label{fig:request} % Used for cross-referencing
+\end{figure}

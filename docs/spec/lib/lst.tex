@@ -1,0 +1,34 @@
+\lstdefinelanguage{json}{
+    basicstyle=\small\ttfamily,
+    columns=fullflexible,
+    breaklines=true,
+    showstringspaces=false,
+    % Line numbers have been removed from here
+    morestring=[b]",
+    stringstyle=\color{jsonKey},
+    moredelim=*[s][\color{jsonValue}]{:\ "}{"},
+    keywords={true, false, null},
+    keywordstyle=\color{jsonNumber}\bfseries,
+    alsoletter={:, [},
+}
+
+\lstdefinelanguage{js}{
+    basicstyle=\small\ttfamily,
+    columns=fullflexible,
+    breaklines=true,
+    showstringspaces=false,
+    % Standard JavaScript strings
+    morestring=[b]",
+    morestring=[b]',
+    stringstyle=\color{jsonValue},
+    % JavaScript Keywords in your signature coral color
+    keywords={break, case, catch, class, const, continue, debugger, default, delete, do, else, export, extends, false, finally, for, function, if, import, in, instanceof, let, new, null, return, super, switch, this, throw, true, try, typeof, var, void, while, with, yield},
+    keywordstyle=\color{jsonKey}\bfseries,
+    % Comments configuration
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    commentstyle=\color{jsComment}\itshape,
+    % Handle numerical values and basic constants
+    ndkeywords={0,1,2,3,4,5,6,7,8,9},
+    ndkeywordstyle=\color{jsonNumber}
+}

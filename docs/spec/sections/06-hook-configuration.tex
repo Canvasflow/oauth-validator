@@ -1,0 +1,235 @@
+\section{Pre-Token Hook Configuration}\label{sec:hook-configuration}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Purpose and Scope}
+
+The pre-token hook is the mechanism by which the tenant's IdP injects the entitlement
+claim into the access token before it is signed. It is the single most important
+implementation step in the tenant's integration. Every behavioral requirement in
+\hyperref[sec:entitlement-mapping]{\S4 Entitlement Mapping} depends on the hook being correctly configured.
+
+
+This section defines:
+
+\begin{enumerate}
+  \item The four rules that ALL hooks MUST follow, regardless of IdP platform.
+  \item Per-IdP implementation guidance for the four most common platforms.
+  \item Auth0-specific operational notes addressing known failure modes.
+\end{enumerate}
+
+Tenants using an IdP not listed in \hyperref[sec:per-idp-implementation]{\S6.2} 
+MUST implement a functionally equivalent mechanism and validate that the resulting 
+token satisfies all requirements in 
+\hyperref[sec:token-requirements]{\S5 Token Requirements} before onboarding can proceed.
+
+\subsection{Per-IdP Implementation Table} \label{sec:per-idp-implementation}
+
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{@{}lXp{4cm}@{}} % Slightly expanded note column width
+\toprule
+\textbf{IdP} & \textbf{Mechanism} & \textbf{Claim name note} \\
+\midrule
+AWS Cognito &
+  Pre Token Generation Lambda trigger, event version \textbf{V2\_0} --- use
+  \wrapcode{claimsAndScopeOverrideDetails.accessTokenGeneration.claimsToAddOrOverride}
+  to set the claim. &
+  Bare names (\texttt{entitlements}, \texttt{resources}) generally work.
+  \texttt{cf:entitlements} is also supported. See Cognito \texttt{typ}/\texttt{token\_use}
+  note in \hyperref[sec:token-type]{\S5.3.1}. \\[8pt]
+Okta &
+  Token Inline Hook --- return 
+  \wrapcode{commands[].value.op = "add"} with
+  \wrapcode{path = "/claims/cf:entitlements"}. &
+  Bare names and namespaced names both work. \\[8pt]
+Azure AD / Entra &
+  Custom Claims Provider (custom authentication extension) configured as an
+  \texttt{onTokenIssuanceStart} event handler. &
+  Bare names work. Use attribute name matching the claim name in the extension's
+  \wrapcode{additionalData} response. \\[8pt]
+Auth0 &
+  Post-Login \textbf{Action} ---
+  \wrapcode{api.accessToken.setCustomClaim('cf:entitlements', [...])} &
+  \textbf{MUST use \texttt{cf:entitlements}} --- see \hyperref[sec:auth0-notes]{\S6.3} for mandatory Auth0 notes. \\
+\bottomrule
+\end{tabularx}
+\caption{Per-IdP hook implementation}
+\end{table}
+
+\subsection{Auth0-Specific Operational Notes}\label{sec:auth0-notes}
+
+Auth0 introduces several behaviors that differ from other IdP platforms. Failure to
+understand these is the primary source of Auth0 integration failures. The following
+notes are drawn from direct operational experience and are mandatory reading for all
+Auth0 tenants.
+
+\subsubsection{Non-Namespaced Custom Claims Are Silently Dropped on Access Tokens}\label{sec:non-namespace-custom-claim}
+
+Auth0 enforces a blocklist of non-namespaced custom claim names for access tokens. The
+bare name \texttt{entitlements} is on this blocklist and will be silently dropped from
+the access token, even if the Action correctly attempts to set it.
+
+Auth0 tenants MUST use \texttt{cf:entitlements} as the claim name:
+
+\begin{lstlisting}[language=js]
+// Correct -- cf:entitlements is a namespaced claim and is not blocklisted
+api.accessToken.setCustomClaim('cf:entitlements', canvasflowEntitlements);
+
+// Incorrect -- 'entitlements' will be silently dropped by Auth0
+api.accessToken.setCustomClaim('entitlements', canvasflowEntitlements);
+\end{lstlisting}
+
+Do not use \texttt{resources} or \texttt{entitlements} with Auth0. Neither is guaranteed
+to survive the Auth0 access token pipeline.
+
+\subsubsection{Action Must Be Deployed AND Attached in Triggers}\label{sec:action-deployment}
+
+Auth0 separates the concepts of \emph{deploying} an Action and \emph{attaching} it to a
+Trigger flow. An Action that has been written, saved, and deployed will do nothing until
+it is also attached to the appropriate Trigger.
+
+The correct procedure:
+\begin{enumerate}
+  \item Create and deploy the Post-Login Action in \textbf{Actions $\to$ Library}.
+  \item Navigate to \textbf{Actions $\to$ Triggers} (the Auth0 dashboard may also show
+    this as ``Flows'' in some UI versions).
+  \item Select the \textbf{post-login} flow.
+  \item Drag the deployed Action into the flow graph.
+  \item Click \textbf{Apply}.
+\end{enumerate}
+
+An Action that is deployed but not attached produces no token output. There is no error
+--- the token is simply issued without the \texttt{cf:entitlements} claim.
+
+\subsubsection{\texttt{console.log} Does Not Appear in Monitoring $\to$ Logs}
+
+\texttt{console.log} statements inside Auth0 Actions do NOT appear in
+\textbf{Monitoring $\to$ Logs} in the Auth0 dashboard. Do not use \texttt{console.log}
+to confirm that the hook executed or to inspect the entitlement values.
+
+\textbf{How to verify the hook ran:} inspect the issued access token. Decode it at
+\url{https://jwt.io} or use the Canvasflow OAuth Validator
+(\url{https://oauth.canvasflow.work}). If \texttt{cf:entitlements} is present and
+contains the expected values, the hook ran correctly. If the claim is absent, confirm
+\hyperref[sec:non-namespace-custom-claim]{\S6.3.1} steps and 
+\hyperref[sec:action-deployment]{\S6.3.2} above.
+
+
+\subsubsection{API Registration Is Required for JWT Access Tokens}\label{sec:api-registration-required}
+
+Auth0 issues opaque access tokens by default when only an Application is registered. To
+obtain JWT access tokens, the tenant MUST register a separate \textbf{API} in the Auth0
+dashboard. The API's \texttt{identifier} field becomes the \texttt{audience} parameter
+required in every authorization request; it MUST be set to \texttt{canvasflow-api}.
+
+The Application must then have the API authorized. The authorization request from the
+PWA MUST include \texttt{audience=canvasflow-api}. Without both of these --- the API
+registration and the audience parameter in the request --- Auth0 will issue an opaque
+token that Canvasflow cannot validate.
+
+Minimum scope for the token: \texttt{openid}. Additional scopes (\texttt{email},
+\texttt{profile}) may be requested for ID token content but are not required for the
+access token.
+
+\pagebreak
+
+\subsection{Hook Rules --- All IdPs}\label{sec:hook-rules}
+
+Regardless of IdP platform, the pre-token hook MUST comply with all four of the
+following rules:
+
+\subsubsection{Rule~1: Re-evaluate on Every Invocation}
+
+The hook MUST read the authenticated user's entitlements from the tenant's live source
+of truth on every invocation --- both at initial login and at every token refresh. The
+hook MUST NOT copy the entitlement claim from a prior token or from a prior hook result.
+
+\textbf{Why.} The hook re-evaluation on refresh is the mechanism that keeps the effective
+entitlement set current within the revocation window ($\leq$ 3600~seconds). If the hook
+copies the previous token's claim rather than re-reading, a user whose access has been
+revoked in the tenant's system will continue to receive premium content until the refresh
+token is also revoked. This would undermine the security property stated in
+\hyperref[sec:session-lifecycle]{Responsabilities \S3.2.6}.
+
+
+
+\subsubsection{Rule~2: Map to Canvasflow Format Before Emitting}
+
+The hook MUST map each internal tenant entitlement identifier to a Canvasflow resource
+identifier in \texttt{cf:<type>:<id>} format before embedding it in the access token.
+The hook SHOULD emit only values in this format.
+
+Values without the \texttt{cf:} prefix are silently ignored by the Resource Server and
+grant no access (see \hyperref[sec:mandatory-value-format]{Entitlement Mapping \S4.2}). A hook that emits only
+non-prefixed values will produce a token that authenticates the user but grants no
+premium content --- the same behavior as an empty entitlement array.
+
+\subsubsection{Rule~3: Write into the Access Token, Not the ID Token}
+
+The entitlement claim MUST be injected into the \textbf{access token}. It MUST NOT be
+placed in the ID token.
+
+This is the single most common misconfiguration in tenant integrations. The ID token is
+consumed by the SPA for user identity display; it is never sent to the Canvasflow GraphQL
+API. If the hook targets the ID token, the access token arrives at the Resource Server
+with no entitlement claim, which is treated as free content only (see
+\hyperref[sec:free-content-baseline]{Entitlement Mapping \S4.4}). The Canvasflow OAuth Validator (see
+\hyperref[sec:tenant-side-setup]{On-Boarding \S9.3}) explicitly detects and flags this misconfiguration
+before go-live.
+
+\subsubsection{Rule~4: Emit an Explicit Empty Array for Free-Tier Users}
+
+If the authenticated user has no premium entitlements, the hook MUST emit an explicit
+empty array:
+
+\begin{lstlisting}
+"cf:entitlements": []
+\end{lstlisting}
+
+Do not omit the claim entirely when a user has no entitlements. An absent claim and an
+empty array produce identical runtime behavior --- the user sees free content only --- but
+an absent claim is logged by the Resource Server as a possible hook misconfiguration.
+An explicit empty array signals to Canvasflow (and to the validator tool) that the hook
+ran correctly and intentionally found no premium entitlements for this user.
+
+\subsection{Hook Implementation Reference}
+
+The following pseudocode illustrates the required hook logic for any IdP platform. The
+implementation will differ in syntax and API; the logical structure MUST be preserved.
+
+\begin{lstlisting}[language=js]
+/**
+ * Post-Login / Pre-Token Generation Hook
+ * Implements token decoration rules for Canvasflow claims.
+ */
+function onPreTokenSign(user, event, context) {
+    // Rule 1: Always read from live source of truth
+    const tenantEntitlements = readUserEntitlements(user.id);
+
+    // Rule 2: Map to Canvasflow cf:<type>:<id> format
+    const canvasflowIds = [];
+    
+    tenantEntitlements.forEach(internalId => {
+        const mapped = MAPPING_TABLE[internalId]; // tenant's own table
+        
+        if (mapped !== null && mapped !== undefined) {
+            canvasflowIds.push(mapped); // e.g. "cf:issue:123"
+        }
+        // else: no mapping exists -- omit this value (it would be ignored anyway)
+    });
+
+    // Rule 4: Always emit the claim, even if empty
+    // Rule 3: Target the access token, not the ID token
+    // Note: Assuming `accessToken` is available in scope or extracted from context
+    const accessToken = context.accessToken; 
+    accessToken.setCustomClaim("cf:entitlements", canvasflowIds);
+
+    return accessToken;
+}
+\end{lstlisting}
+
+The \texttt{MAPPING\_TABLE} is the tenant's internal data structure mapping their product
+or subscription identifiers to Canvasflow resource identifiers. It is maintained entirely
+by the tenant.

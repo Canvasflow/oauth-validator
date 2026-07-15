@@ -1,0 +1,224 @@
+
+\section{Redirect and Callback}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Callback URI}
+
+The callback URI is tenant-specific. Each tenant deploys the Canvasflow SPA on 
+their own domain, and the callback URI is formed from that domain with a 
+standardized path:
+
+```
+https://www.<tenant-domain>/callback
+```
+
+For example, a tenant whose domain is `example.com` uses:
+
+```
+https://www.example.com/callback
+```
+
+This URI MUST be registered in the tenant's IdP exactly as shown --- including the HTTPS
+scheme, the exact hostname, and the \texttt{/callback} path. No trailing slash. No
+wildcards. No query parameters.
+
+
+
+The tenant's IdP MUST validate the \texttt{redirect\_uri} parameter in every
+authorization request against this registered value using exact string matching
+(\href{https://tools.ietf.org/html/rfc6749#section-3.1.2}{RFC~6749~\S3.1.2}). 
+Partial matching, wildcard matching, or prefix matching MUST NOT be permitted. 
+Exact-match validation prevents open-redirect attacks, where an attacker substitutes 
+a malicious redirect URI to capture the authorization code.
+
+The tenant MUST NOT register additional redirect URIs for the Canvasflow SPA client
+registration beyond this exact value, unless required for a sandbox or staging
+environment (in which case, a separate client registration SHOULD be used for each
+environment).
+
+\subsection{Authorization Code Flow with PKCE}\label{sec:authorization-with-pkce}
+
+This integration uses the OAuth~2.0 Authorization Code flow 
+(\href{https://tools.ietf.org/html/rfc6749#section-4.1}{RFC~6749~\S4.1}) combined
+with Proof Key for Code Exchange 
+(\href{https://tools.ietf.org/html/rfc7636}{RFC~7636}) with 
+\texttt{response\_mode=fragment}.
+
+\subsubsection{What Travels in the Fragment}
+
+Only the short-lived, single-use \textbf{authorization code} travels in the URL fragment:
+
+
+\begin{lstlisting}[basicstyle=\footnotesize\ttfamily]
+https://www.<tenant-domain>/callback#code=<authorization_code>&state=<state>
+\end{lstlisting}
+
+Tokens --- access token, refresh token, and ID token --- are \textbf{never} placed in the
+URL. They are obtained by the SPA in a direct HTTP POST to the tenant's token endpoint,
+which returns them in the response body over a TLS-secured connection.
+
+The fragment is cleared from the browser URL bar immediately after the SPA reads the
+code, using \texttt{history.replaceState()}. The authorization code's exposure in the
+fragment is bounded: it is single-use, it has a short server-side lifetime (typically
+$\sim$60~seconds), and it is useless to an attacker without the \texttt{code\_verifier},
+which never leaves the SPA.
+
+\subsubsection{Retirement of Implicit-Style Token Fragment Delivery}
+
+Prior versions of this integration specification described delivering tokens
+(\texttt{access\_token}, \texttt{refresh\_token}, \texttt{id\_token}) directly in the
+URL fragment --- the Implicit flow pattern (\href{https://tools.ietf.org/html/rfc6749#section-4.2}{RFC~6749~\S4.2}). This pattern is
+\textbf{retired} in this specification and MUST NOT be used.
+
+\textbf{Justification.} The Implicit flow is deprecated by 
+\href{https://tools.ietf.org/html/rfc9700#section-2.1.2}{RFC~9700~\S2.1.2} for the
+following reasons:
+
+\begin{itemize}
+  \item Tokens in URLs are recorded in browser history, where they persist until the user
+    manually clears history.
+  \item Browser extensions can read \texttt{window.location.hash} and exfiltrate tokens.
+  \item If the callback page loads any third-party resource (analytics, fonts, CDN), the
+    token may appear in the \texttt{Referer} header of outbound requests from the page.
+  \item Access tokens have no single-use constraint --- an intercepted token is valid until
+    \texttt{exp}, which may be up to 3600~seconds.
+\end{itemize}
+
+The Authorization Code + PKCE pattern (\hyperref[sec:authorization-with-pkce]{\S7.2}) 
+eliminates these risks. The authorization code that travels in the fragment is 
+single-use, short-lived, and provides no value to an attacker without the 
+\texttt{code\_verifier}. Tokens are obtained via a direct,
+TLS-protected HTTP POST that does not appear in any URL or HTTP log.
+
+\subsection{PKCE Requirements}
+
+PKCE MUST be implemented using the \texttt{S256} challenge method. The \texttt{plain}
+method MUST NOT be used (\href{https://tools.ietf.org/html/rfc7636#section-4.2}{RFC~7636~\S4.2}).
+
+\subsubsection{\texttt{code\_verifier} Generation}
+
+The \texttt{code\_verifier} MUST be generated using a cryptographically secure random
+source. In the browser, this MUST be the Web Crypto API (\texttt{crypto.getRandomValues}).
+The \texttt{code\_verifier} MUST be between 43 and 128 characters in length, using the
+character set \texttt{[A-Za-z0-9\texttt{-}.\texttt{\_}\textasciitilde]}
+(unreserved characters per \href{https://tools.ietf.org/html/rfc7636#section-4.1}{RFC~7636~\S4.1}).
+
+\begin{lstlisting}[language=js]
+// Correct -- cryptographically secure
+const array = new Uint8Array(32);
+crypto.getRandomValues(array);
+const codeVerifier = base64urlEncode(array); // 43 chars minimum from 32 bytes
+\end{lstlisting}
+
+The \texttt{code\_verifier} MUST be stored in memory only during the authorization flow
+and discarded after the token exchange is complete. It MUST NOT be persisted to
+\texttt{localStorage}, \texttt{sessionStorage}, or any other durable storage.
+
+\subsubsection{\texttt{code\_challenge} Derivation}\label{sec:code-challenge-derivation}
+
+The \texttt{code\_challenge} is derived from the \texttt{code\_verifier} as:
+
+\begin{lstlisting}
+code_challenge = BASE64URL(SHA256(ASCII(code_verifier)))
+\end{lstlisting}
+
+This derivation MUST also use the Web Crypto API:
+
+\begin{lstlisting}[language=js]
+const encoder = new TextEncoder();
+const data = encoder.encode(codeVerifier);
+const digest = await crypto.subtle.digest('SHA-256', data);
+const codeChallenge = base64urlEncode(new Uint8Array(digest));
+\end{lstlisting}
+
+\subsubsection{Why PKCE Is Required Even When the IdP Allows Skipping It}
+
+PKCE is a defense-in-depth requirement --- it is mandatory for this integration regardless
+of whether the tenant's IdP enforces it. PKCE protects against two distinct attack
+classes:
+
+\begin{enumerate}
+  \item \textbf{Authorization-code interception (\href{https://tools.ietf.org/html/rfc7636\#section-1}{RFC~7636~\S1}).} An attacker who
+    intercepts the authorization code from the URL fragment cannot exchange it for tokens
+    without the \texttt{code\_verifier}, which is never transmitted over any channel
+    until the token exchange.
+
+  \item \textbf{Authorization-code injection (\href{https://tools.ietf.org/html/rfc9700\#section-4.4}{RFC~9700~\S4.4}).} PKCE prevents an
+    attacker from injecting a stolen authorization code (obtained from a separate session
+    or system) into the victim's flow. The \texttt{code\_verifier} ties the token
+    exchange to the specific browser session that initiated the authorization request.
+\end{enumerate}
+
+Tenants whose IdP marks PKCE as optional MUST configure the Canvasflow SPA client
+registration to enforce PKCE.
+
+\subsection{\texttt{state} Parameter --- CSRF Protection}
+
+The \texttt{state} parameter MUST be included in every authorization request
+(\href{https://tools.ietf.org/html/rfc6749\#section-4.1.1}{RFC~6749~\S4.1.1}). 
+The SPA MUST:
+
+\begin{enumerate}
+  \item Generate a cryptographically random \texttt{state} value before redirecting to
+    the IdP.
+  \item Store the \texttt{state} value in memory (not \texttt{localStorage}).
+  \item Verify that the \texttt{state} value returned in the callback fragment exactly
+    matches the stored value before accepting the authorization code.
+  \item Reject and discard the authorization code if the \texttt{state} values do not
+    match.
+\end{enumerate}
+
+A mismatched or absent \texttt{state} indicates a potential Cross-Site Request Forgery
+(CSRF) attack targeting the callback endpoint.
+
+\subsection{\texttt{nonce} Parameter --- ID Token Replay Protection}
+
+
+
+When the \texttt{openid} scope is requested (which produces an ID token), the
+\texttt{nonce} parameter MUST be included in the authorization request
+(\href{https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest}{OIDC Core \S3.1.2.1}).
+
+The \texttt{nonce} MUST be a cryptographically random value generated fresh for each
+authorization request. The SPA MUST verify that the \texttt{nonce} claim in the received
+ID token matches the value generated for that request. A mismatched \texttt{nonce}
+indicates a potential ID token replay attack.
+
+The \texttt{nonce} applies to the ID token only. The access token does not carry a
+\texttt{nonce} claim.
+
+\subsection{Token Endpoint Authentication}\label{sec:token-endpoint-authentication}
+
+The Canvasflow SPA is a \textbf{public OAuth~2.0 client} 
+(\href{https://tools.ietf.org/html/rfc6749\#section-2.1}{RFC~6749~\S2.1}). It MUST NOT
+use a client secret. Token endpoint authentication method MUST be set to \texttt{none}
+in the tenant's client registration.
+
+The absence of a client secret is correct and intentional: client secrets in
+browser-based applications cannot be kept confidential and provide no security benefit
+(\href{https://tools.ietf.org/html/rfc9700\#section-2.1}{RFC~9700~\S2.1}). 
+PKCE provides equivalent CSRF protection for public clients.
+
+\subsection{Authorization Request Summary}
+
+The following parameters MUST be included in every authorization request sent to the
+tenant's IdP:
+
+\begin{longtable}{@{}llp{6cm}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Required} & \textbf{Value} \\
+\midrule
+\endhead
+\texttt{response\_type}       & MUST           & \texttt{code} \\[4pt]
+\texttt{client\_id}           & MUST           & Tenant-assigned client ID for the Canvasflow SPA \\[4pt]
+\texttt{redirect\_uri}        & MUST           & \texttt{https://app.canvasflow.io/callback} \\[4pt]
+\texttt{scope}                & MUST           & At minimum \texttt{openid}; additional scopes at tenant's discretion \\[4pt]
+\texttt{code\_challenge}      & MUST           & Derived from \texttt{code\_verifier} per \hyperref[sec:code-challenge-derivation]{\S7.3.2} \\[4pt]
+\texttt{code\_challenge\_method} & MUST        & \texttt{S256} \\[4pt]
+\texttt{state}                & MUST           & Cryptographically random CSRF token \\[4pt]
+\texttt{response\_mode}       & SHOULD         & \texttt{fragment} \\[4pt]
+\texttt{nonce}                & MUST (when \texttt{openid} in scope) & Cryptographically random per-request value \\[4pt]
+\texttt{audience}             & MUST (Auth0 only) & \texttt{canvasflow-api} \\
+\bottomrule
+\end{longtable}

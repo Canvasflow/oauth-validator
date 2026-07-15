@@ -1,0 +1,43 @@
+name: Build Spec PDF
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/spec/version.tex'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build PDF
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-full latexmk
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep '\\specversion' docs/spec/version.tex | sed 's/.*{\([^}]*\)}[[:space:]]*$/\1/')
+          echo "Extracted version: ${VERSION}"
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build PDF
+        run: make pdf SPEC_VERSION=${{ steps.version.outputs.value }}
+        working-directory: docs
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: spec-v${{ steps.version.outputs.value }}
+          name: Spec v${{ steps.version.outputs.value }}
+          files: docs/build/canvasflow-tenant-spec-v*.pdf
+          fail_on_unmatched_files: true
+          make_latest: false
