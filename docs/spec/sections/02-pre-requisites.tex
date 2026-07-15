@@ -1,0 +1,153 @@
+\section{Pre-requisites}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Purpose}
+
+This section defines the capabilities a tenant MUST possess before initiating
+integration with Canvasflow. Meeting all pre-requisites is a mandatory precondition for
+Phase~2 of the onboarding process (see \hyperref[sec:canvasflow-side-setup]{Canvasflow-Side Setup}). 
+A tenant whose IdP does not satisfy all items in this section MUST resolve the gaps 
+before proceeding; Canvasflow will not set \texttt{status = 'active'} for a tenant 
+that cannot meet these requirements.
+
+
+\subsection{Identity Provider Capabilities}
+
+\subsubsection{OAuth 2.0 Authorization Code Flow}
+
+The tenant's IdP MUST support the OAuth~2.0 Authorization Code flow as defined in
+\href{https://datatracker.ietf.org/doc/html/rfc6749#section-4.1}{RFC~6749~\S4.1}. 
+Specifically, the IdP MUST expose:
+
+\begin{itemize}
+  \item An authorization endpoint (\texttt{/authorize} or equivalent) capable of
+    accepting \linebreak \texttt{response\_type=code} requests.
+  \item A token endpoint (\texttt{/token} or equivalent) capable of exchanging
+    authorization codes for access tokens, and of accepting
+    \texttt{grant\_type=refresh\_token} for session renewal.
+  \item A publicly accessible OIDC discovery document
+    \linebreak(\texttt{/.well-known/openid-configuration}) or the ability to supply endpoint
+    URLs directly to Canvasflow at onboarding.
+\end{itemize}
+
+\begin{quote}
+  \textit{IdPs that support only the Implicit flow} (\href{https://datatracker.ietf.org/doc/html/rfc6749#section-4.2}{\textit{RFC~6749~\S4.2}})\textit{,
+  the Resource Owner Password Credentials grant} (\href{https://datatracker.ietf.org/doc/html/rfc6749#section-4.3}{\textit{RFC~6749~\S4.3}})\textit{, 
+  or the Client Credentials grant} (\href{https://datatracker.ietf.org/doc/html/rfc6749#section-4.4}{\textit{RFC~6749~\S4.4}}) \textit{do not satisfy this requirement. Those grants are not used in this
+  integration.}
+\end{quote}
+
+
+\subsubsection{PKCE with S256 Challenge Method}
+
+
+
+The tenant's IdP MUST support Proof Key for Code Exchange (PKCE) as defined in
+\href{https://datatracker.ietf.org/doc/html/rfc7636}{RFC~7636} with the \texttt{S256} 
+challenge method. The \texttt{plain} method MUST NOT be used. PKCE is required unconditionally, 
+even if the tenant's IdP permits skipping it. This requirement exists for defense in depth: PKCE prevents both
+authorization-code interception attacks and authorization-code injection attacks
+(\href{https://datatracker.ietf.org/doc/html/rfc9700#section-4.4}{RFC~9700~\S4.4}). Tenants whose IdP marks PKCE as optional MUST configure their OAuth
+client registration to enforce PKCE on the Canvasflow SPA client.
+
+\pagebreak
+
+\subsubsection{JWT Access Token Issuance}
+
+The tenant's IdP MUST issue \textbf{JWT} (JSON Web Token, 
+\href{https://datatracker.ietf.org/doc/html/rfc7519}{RFC~7519}) access 
+tokens --- not opaque tokens. The Canvasflow Resource Server validates access 
+tokens locally by verifying their cryptographic signature and claims; opaque 
+tokens require introspection, which Canvasflow does not support.
+\begin{quote}
+  \textit{\textbf{Auth0 note (mandatory reading for Auth0 tenants):} Auth0 issues opaque access
+  tokens by default when only an Application is registered. To obtain JWT access tokens,
+  the tenant MUST register a separate \textbf{API} in the Auth0 dashboard and set its
+  \texttt{identifier} (audience) to \texttt{canvasflow-api}. The Application must then
+  have the API authorized; the PWA MUST include \texttt{audience=canvasflow-api} in every
+  authorization request. An Application registration alone, without an accompanying API
+  registration, will produce opaque access tokens that Canvasflow will reject.}
+\end{quote}
+
+\subsubsection{Pre-Token Hook Mechanism}
+
+The tenant's IdP MUST provide a mechanism to execute custom logic server-side
+immediately before an access token is signed. This hook is used to inject the
+entitlement claim (\hyperref[sec:entitlement-mapping]{\S4}) into the access token payload. 
+The hook MUST run on both initial login and on every token refresh.
+
+The specific mechanism varies by IdP. Section \hyperref[sec:hook-configuration]{\S6} 
+documents the correct mechanism for the four most common platforms. Tenants using 
+an IdP not listed in \hyperref[sec:hook-configuration]{\S6} MUST confirm with 
+Canvasflow that an equivalent mechanism exists before onboarding begins.
+
+\subsubsection{Access Token Signing --- JWKS or HS256}
+
+The tenant MUST use one of the two supported signing paths described 
+in \hyperref[sec:signing-path-requirements]{\S5.2}:
+
+
+
+\begin{itemize}
+  \item \textbf{JWKS (preferred):} The IdP signs access tokens with RS256 or ES256, and
+    publishes a JSON Web Key Set 
+    (\href{https://datatracker.ietf.org/doc/html/rfc7517}{RFC~7517}) at a stable, 
+    publicly accessible URL. This is the default path and is satisfied 
+    automatically by AWS Cognito, Okta, Azure AD/Entra, and Auth0.
+
+  \item \textbf{HS256 (exception):} The IdP signs access tokens with HMAC-SHA256 using
+    a shared secret of at minimum 32~bytes (256~bits) of cryptographically random data.
+    This path is an explicit exception reserved for custom or lightweight IdPs that
+    cannot publish a JWKS endpoint. It MUST be approved by Canvasflow before use.
+\end{itemize}
+
+Both paths require that the \texttt{kid} (Key ID) header claim be present in every
+issued token.
+
+\subsubsection{Configurable Access Token Lifetime}
+
+The tenant's IdP MUST be able to set the access token lifetime to a value no greater
+than 3600~seconds (one hour). Longer lifetimes are prohibited 
+(\hyperref[sec:required-payload-claims]{\S5.4}). The recommended lifetime is 
+900--3600~seconds. A shorter lifetime reduces the revocation exposure window
+(\hyperref[sec:revocation]{\S1.4}, Core Design Principle~3).
+
+\subsection{Technical Personnel Requirement}
+
+The tenant MUST designate a technical lead who has administrative access to the
+tenant's IdP and who can:
+
+\begin{enumerate}
+  \item Register an OAuth~2.0 client application in the tenant's IdP.
+  \item Implement and deploy the pre-token hook mechanism specific to their IdP (\hyperref[sec:hook-configuration]{\S6}).
+  \item Obtain or confirm the signing credentials (JWKS URL or HS256 secret).
+  \item Execute the full validation flow using the Canvasflow OAuth Validator tool
+    (\url{https://oauth.canvasflow.work}) and produce evidence of all-green results for
+    validation checks V1 through V5 (\hyperref[sec:tenant-side-setup]{Tenant-Side Setup}).
+\end{enumerate}
+
+
+
+No integration may proceed to go-live without a designated technical lead who has
+completed the validation gate.
+
+\subsection{Pre-Requisite Summary}
+
+\begin{longtable}{@{}p{5cm}p{2cm}p{5cm}@{}}
+\toprule
+\textbf{Requirement} & \textbf{Mandatory?} & \textbf{Notes} \\
+\midrule
+\endhead
+OAuth~2.0 Authorization Code flow (\href{https://datatracker.ietf.org/doc/html/rfc6749#section-4.1}{RFC~6749~\S4.1}) & MUST & Token endpoint must support refresh grant \\[4pt]
+PKCE S256 (\href{https://datatracker.ietf.org/doc/html/rfc7636}{RFC~7636}) & MUST & Required even if IdP marks it optional \\[4pt]
+JWT access token issuance & MUST & Auth0 requires separate API registration \\[4pt]
+Pre-token hook on login AND refresh & MUST & Must inject entitlement claim into access token \\[4pt]
+JWKS endpoint (RS256/ES256) & SHOULD & Preferred signing path \\[4pt]
+HS256 shared secret ($\geq$~32 bytes) & MAY & Exception path; requires Canvasflow approval \\[4pt]
+\texttt{kid} header in all issued tokens & MUST & Required for both signing paths \\[4pt]
+Access token lifetime $\leq$ 3600 seconds & MUST & Hard limit; see \hyperref[sec:required-payload-claims]{\S5.4} \\[4pt]
+Designated technical lead with IdP admin access & MUST & Required for validation gate \\[4pt]
+Canvasflow OAuth Validator & MUST & Mandatory go-live gate \\
+\bottomrule
+\end{longtable}

@@ -1,0 +1,141 @@
+
+\section{Refresh Token}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Purpose}
+
+Refresh tokens allow the Canvasflow SPA to obtain new access tokens silently --- without
+requiring the user to re-authenticate --- after the current access token expires. This
+section defines what the tenant's IdP MUST support for refresh token operation, how the
+entitlement claim is re-evaluated at refresh time, and where each token type travels in
+the system.
+
+\subsection{Refresh Grant Requirements}
+
+The tenant's IdP token endpoint MUST support \texttt{grant\_type=refresh\_token} for the
+Canvasflow SPA's public OAuth client registration 
+(\href{https://tools.ietf.org/html/rfc6749\#section-6}{RFC~6749~\S6}).
+
+\subsubsection{Refresh Request}
+
+The SPA sends the following request to the tenant's token endpoint when refreshing:
+
+\begin{lstlisting}
+POST <tenant token endpoint>
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&refresh_token=<stored_refresh_token>
+&client_id=<canvasflow_client_id>
+&scope=openid
+\end{lstlisting}
+
+No \texttt{client\_secret} is included --- the client is a public client (\hyperref[sec:token-endpoint-authentication]{\S7.6}).
+
+\subsubsection{Refresh Response}
+
+The token endpoint MUST respond with a JSON body containing at minimum:
+
+\begin{lstlisting}[language=json]
+{
+  "access_token": "<new_jwt_access_token>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "<new_or_same_refresh_token>"
+}
+\end{lstlisting}
+
+The \texttt{access\_token} in the response MUST be a conforming JWT access token
+satisfying all requirements in \hyperref[sec:token-requirements]{\S5 Token Requirements} --- including the
+\texttt{cf:entitlements} (or equivalent) claim with freshly evaluated entitlement values.
+
+\subsection{Freshly Evaluated Entitlements on Every Refresh}\label{sec:freshly-evaluated-entitlements}
+
+The access token issued in response to a refresh grant MUST carry an entitlement claim
+that was freshly evaluated at refresh time. The pre-token hook MUST re-run on every
+refresh and MUST read from the tenant's live source of truth. The hook MUST NOT copy the
+entitlement claim from the previous access token.
+
+\textbf{Why this is the revocation mechanism.} The Canvasflow Resource Server has no
+revocation endpoint and no token blocklist (\hyperref[sec:out-of-scope]{\S1.4}, \hyperref[sec:canvasflow-responsibilities]{\S3.3}). When a tenant removes a
+user's entitlement in their system, the change takes effect at the user's next refresh
+--- when the hook re-evaluates and issues a new access token without the removed
+entitlement. If the tenant also revokes the user's refresh token in the IdP, the user
+cannot obtain any further access tokens, and the residual exposure window is bounded by
+the remaining lifetime of the current access token (\texttt{exp}, $\leq$ 3600~seconds).
+This is the complete revocation workflow available in this version.
+
+Failure to re-evaluate on refresh means a user whose access has been revoked in the
+tenant's system will continue to receive premium content for as long as their refresh
+token remains valid --- potentially indefinitely. The hook re-evaluation requirement is
+therefore a security requirement, not only an operational one.
+
+\subsection{Refresh Token Rotation}
+
+Refresh token rotation is RECOMMENDED but not required.
+
+When the IdP rotates refresh tokens (issues a new refresh token on each refresh grant
+and invalidates the old one), the SPA MUST store the new refresh token received in the
+refresh response, replacing the previous value in its storage.
+
+If the IdP implements refresh token rotation with an absolute maximum lifetime or a
+sliding-window reuse detection policy, the tenant MUST document this behavior for
+Canvasflow support, as it affects how silent session renewal is planned.
+
+\subsection{Token Routing Table}
+
+Each of the three tokens issued by the tenant's IdP has a defined routing scope. Tokens
+MUST NOT be sent to endpoints outside their defined routing scope.
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{@{}lXXX@{}}
+\toprule
+\textbf{Token} & \textbf{Purpose} & \textbf{MUST be sent to} & \textbf{MUST NOT be sent to} \\
+\midrule
+\textbf{Access token} &
+  Authorize API requests &
+  Canvasflow GraphQL API (as \texttt{Authorization: Bearer}) &
+  Tenant IdP; any other endpoint \\[6pt]
+\textbf{ID token} &
+  Prove identity to the SPA for display purposes &
+  SPA only (for reading user display name, picture, etc.) &
+  Canvasflow GraphQL API; tenant IdP token endpoint \\[6pt]
+\textbf{Refresh token} &
+  Obtain new access tokens &
+  Tenant IdP token endpoint (\scriptsize \texttt{grant\_type=refresh\_token}) &
+  Canvasflow GraphQL API; any other endpoint \\
+\bottomrule
+\end{tabularx}
+\caption{Token routing: where each token travels}
+\end{table}
+
+The Canvasflow GraphQL API MUST NOT receive the ID token or the refresh token under any
+circumstances. An ID token presented to the API would fail the \texttt{typ: "at+jwt"}
+check and be rejected with 401. A refresh token presented to the API would similarly be rejected.
+
+\subsection{Client Storage (Informative)}
+
+The following describes the Canvasflow PWA's token storage behavior. This section is
+informative --- it describes Canvasflow's client-side implementation for tenant
+understanding. It does not impose requirements on the tenant.
+
+\begin{itemize}
+  \item The \textbf{access token} is held in memory only (a JavaScript variable). It is
+    not written to \texttt{localStorage}, \texttt{sessionStorage}, cookie storage, or
+    any other durable browser storage. If the page is closed or refreshed, the access
+    token is lost and the SPA uses the refresh token to obtain a new one.
+
+  \item The \textbf{refresh token} is persisted to secure, same-origin storage (the
+    specific mechanism is an implementation detail of the Canvasflow PWA). It survives
+    page navigation and browser restarts.
+
+  \item The \textbf{ID token} is used briefly after the token exchange to populate user
+    display information and then discarded. It is not persisted.
+\end{itemize}
+
+This pattern mirrors the storage recommendations of OAuth~2.0 for Browser-Based Apps
+(\href{https://tools.ietf.org/html/rfc9449}{RFC~9449} and the draft OAuth~2.0 for Native Apps guidelines), where long-lived
+credentials are handled in memory and short-lived credentials are persisted only as
+needed for session continuity.

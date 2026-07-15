@@ -1,0 +1,263 @@
+\section{Entitlement Mapping}\label{sec:entitlement-mapping}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{How Mapping Works --- Tenant Responsibility}
+
+The tenant is solely responsible for the mapping between their users' entitlements
+(expressed in tenant-internal identifiers) and Canvasflow resource identifiers.
+
+Canvasflow resource identifiers are stable and self-served. The Canvasflow administration 
+dashboard lists every publication and content resource the tenant is authorized to access 
+alongside its \texttt{cf:<type>:<id>} identifier (for example, \texttt{cf:issue:123}). 
+The tenant's technical lead logs into the dashboard, locates the relevant publications, and 
+copies the identifiers directly from the UI. No mapping document is delivered by 
+Canvasflow; no API is called to retrieve identifiers. This retrieval is a one-time 
+step performed during Phase 2 of onboarding 
+(see \hyperref[sec:canvasflow-side-setup]{Client On-Boarding \S9.2}).
+
+
+From that point forward, maintaining and executing the mapping is entirely the tenant's
+responsibility. The tenant maintains the mapping table inside their own IdP hook. The
+form of the mapping table is the tenant's choice --- a hardcoded table, a group attribute
+lookup, a call to the tenant's internal directory, or any other mechanism. The required
+output format is defined in \hyperref[sec:mandatory-value-format]{\S4.2} below.
+
+At every login \textbf{and} every token refresh, the hook reads the authenticated user's
+entitlements from the tenant's source of truth, maps them to Canvasflow resource
+identifiers, and embeds the result in the \textbf{access token} before it is signed.
+Canvasflow never sees tenant-internal product identifiers and never performs mapping
+logic.
+
+\textbf{No Canvasflow endpoint is called at login time.} The mapping is performed
+entirely inside the tenant's IdP hook without contacting Canvasflow's servers.
+
+\subsection{Mandatory Value Format: the \texttt{cf:} Prefix}\label{sec:mandatory-value-format}
+
+Every entitlement value emitted by the tenant's hook into the access token MUST use the
+format:
+
+\begin{lstlisting}
+cf:<type>:<id>
+\end{lstlisting}
+
+where \texttt{<type>} is the Canvasflow resource type (e.g., \texttt{issue}) and
+\texttt{<id>} is the stable Canvasflow-assigned numeric or alphanumeric identifier for
+that resource. Examples of conforming values:
+
+\begin{lstlisting}
+cf:issue:1111
+cf:issue:201
+cf:issue:123
+\end{lstlisting}
+
+\subsubsection{The Ignore Rule for Non-Prefixed Values}
+
+The Canvasflow Resource Server applies a strict filter to every value in the resolved
+entitlement array:
+
+\begin{itemize}
+  \item Values with the \texttt{cf:} prefix and the well-formed
+    \texttt{cf:<type>:<id>} structure --- \textbf{accepted} and used for content gating.
+  \item \textbf{Any value without the \texttt{cf:} prefix --- silently ignored.} It is
+    dropped from the effective entitlement set. It does not cause the token to be
+    rejected. It does not grant any access.
+\end{itemize}
+
+The effective entitlement set is computed as:
+
+\begin{lstlisting}
+effective_entitlements =
+  resolved_claim_array
+    .filter(v => typeof v === 'string' &&
+            v.startsWith('cf:'))
+\end{lstlisting}
+
+\textbf{Example:} a claim value of
+\texttt{["cf:issue:123",\ "product:789",\ "issue:201"]} yields an effective entitlement
+set of \texttt{["cf:issue:123"]}. The values \texttt{product:789} (a tenant-internal
+identifier without the prefix) and \texttt{issue:201} (missing the \texttt{cf:} prefix)
+are both ignored and logged server-side correlated by \texttt{jti}.
+
+\textbf{Why the prefix is required.} The \texttt{cf:} namespace makes entitlement values
+self-describing and collision-proof. A raw tenant-internal identifier such as \texttt{456}
+or \texttt{product:789} that leaks into the claim can never be mistaken for a Canvasflow
+entitlement. The prefix also enables unambiguous filtering --- the Resource Server requires
+no knowledge of any tenant's internal identifier scheme to apply the rule.
+
+\textbf{Why the ignore-rather-than-reject behavior.} IdP hooks and shared claims
+frequently carry values from other integrations or from incomplete mapping configurations.
+Rejecting an entire token because one value in the array lacks the \texttt{cf:} prefix
+would turn a partial misconfiguration into a full authentication outage for the affected
+user. Silently ignoring non-prefixed values fails safe: unmapped or foreign values grant
+nothing, and the user still authenticates. Server-side logging of ignored values
+(correlated by \texttt{jti}) preserves the ability for Canvasflow support to assist the
+tenant in identifying and correcting the misconfiguration.
+
+\subsection{Claim Name Hierarchy and Precedence}\label{sec:claim-name-hierarchy}
+
+The mapped entitlement array MAY be communicated under any one of three claim names.
+When more than one is present in a single token, the Resource Server applies a strict
+precedence rule.
+
+
+
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{@{}clX@{}}
+\toprule
+\textbf{Precedence} & \textbf{Claim name} & \textbf{Why it exists} \\
+\midrule
+1 (highest) & \texttt{cf:entitlements} &
+  Namespaced, collision-proof. Some IdPs --- notably Auth0 --- blocklist non-namespaced
+  custom claims on access tokens. \texttt{cf:entitlements} is guaranteed to work on
+  every IdP and is the RECOMMENDED claim name for all new integrations. \\[6pt]
+2 & \texttt{resources} &
+  Legacy claim name retained for backward compatibility with tenants already integrated
+  against this name. \\[6pt]
+3 (lowest) & \texttt{entitlements} &
+  The IANA-registered claim name per 
+  \href{https://tools.ietf.org/html/rfc9068\#section-2.2.3.1}{RFC~9068~\S2.2.3.1} and 
+  \href{https://tools.ietf.org/html/rfc7643\#section-4.1.2}{RFC~7643~\S4.1.2} ---
+  standards-preferred but usable only on IdPs that do not reserve or blocklist it. \\
+\bottomrule
+\end{tabularx}
+\caption{Entitlement claim name precedence}
+\end{table}
+
+\textbf{Resolution rule (normative):} The Resource Server reads the first claim present
+in precedence order and uses it exclusively. It does not merge arrays across multiple
+claim names. If \texttt{cf:entitlements} is present, \texttt{resources} and
+\texttt{entitlements} are ignored entirely, even if they contain additional values.
+
+\begin{lstlisting}
+if token.claims["cf:entitlements"] exists:
+    resolved_claim_array =
+      token.claims["cf:entitlements"]
+else if token.claims["resources"] exists:
+    resolved_claim_array =
+      token.claims["resources"]
+else if token.claims["entitlements"] exists:
+    resolved_claim_array =
+      token.claims["entitlements"]
+else:
+    resolved_claim_array = []   
+\end{lstlisting}
+
+\textbf{Why precedence is inverted from standards purity.} The namespaced claim
+\texttt{cf:entitlements} takes priority over the standards-registered
+\texttt{entitlements} because \emph{reliability beats purity}. A tenant who deliberately
+sets \texttt{cf:entitlements} for Canvasflow has expressed clear intent --- whereas the
+bare \texttt{entitlements} claim may have been populated by the IdP itself (as a standard
+SCIM attribute) or by an unrelated integration. When both are present, the namespaced
+claim is the authoritative signal of what the tenant intended for this integration.
+
+\textbf{Recommendation.} All new integrations SHOULD use \texttt{cf:entitlements}.
+Existing integrations using \texttt{resources} or \texttt{entitlements} are supported
+but SHOULD migrate to \texttt{cf:entitlements} at their next major hook update. Auth0
+tenants MUST use \texttt{cf:entitlements} --- no other option is available (see
+\hyperref[sec:per-idp-implementation]{Per-IdP Implementation Table \S6.2}).
+
+\pagebreak
+
+\subsection{Empty, Absent, and All-Ignored Claims: the Free-Content Baseline}\label{sec:free-content-baseline}
+
+The following three states all resolve to the same effective condition:
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{@{ }p{1.3cm}Xp{3cm}@{}}
+\toprule
+\textbf{State} & \textbf{Cause} & \textbf{Effective entitlement set} \\
+\midrule
+Empty array & \texttt{"cf:entitlements":[]} emitted by hook & \texttt{[]} \\[4pt]
+Absent claim & None of the three claim names present & \texttt{[]} (logged as possible misconfiguration) \\[4pt]
+All-ignored array & All values present but none carry \texttt{cf:} prefix & \texttt{[]} (logged as likely mapping misconfiguration) \\
+\bottomrule
+\end{tabularx}
+\caption{Free-content baseline: three equivalent states}
+\end{table}
+
+In all three cases: \textbf{the user authenticates successfully and is entitled to free
+content only.} Authentication does not fail. Content Canvasflow classifies as free is
+served. Content Canvasflow classifies as premium is withheld. This is the semantic model
+--- not an error condition.
+
+Entitlements gate \emph{premium} content. Free content requires only a valid, verified
+access token; entitlement values are not consulted.
+
+\subsubsection{Consequences}
+
+The following specific behaviors MUST be understood by tenant implementors:
+
+\begin{itemize}
+  \item \textbf{An empty array is a valid, intentional configuration.} A registered user
+    on a free tier SHOULD have the hook emit \texttt{"cf:entitlements": []} explicitly.
+    Explicit presence distinguishes ``free-tier user with correctly-configured hook'' from
+    ``misconfigured hook with missing claim'' in server-side debugging.
+
+  \item \textbf{An absent claim is tolerated} --- the behavior is identical to an empty
+    array --- but Canvasflow MUST log a warning server-side (correlated by \texttt{jti})
+    flagging the absence as a possible hook misconfiguration. An absent claim means
+    Canvasflow cannot distinguish a deliberate free-tier configuration from a broken hook.
+
+  \item \textbf{A present-but-non-array value MUST cause token rejection (401).} If the
+    resolved claim name is present but its value is not a JSON array (e.g., it is a
+    string, number, or object), the token is malformed and MUST be rejected. A malformed
+    claim is a broken token, not a free-tier user.
+
+  \item \textbf{An all-ignored array} (values present, none carry the \texttt{cf:}
+    prefix) results in free content only. The non-prefixed values are logged server-side
+    (correlated by \texttt{jti}) as a likely mapping misconfiguration, but the token is
+    not rejected.
+\end{itemize}
+
+\pagebreak
+
+\subsection{Why Mapping Happens at Auth Time in the Hook}
+
+Mapping is executed in the IdP hook at authentication and refresh time rather than in
+the Canvasflow GraphQL server at request time. The justification is as follows:
+
+\textbf{Performance.} The hook is called once per login or refresh, not on every API
+request. Executing entitlement mapping inside the GraphQL resolver would add a
+cross-system lookup to every query, multiplying the latency cost proportionally with
+API usage volume.
+
+\textbf{Cryptographic integrity.} The result of the hook's mapping is sealed inside the
+JWT's signature before the token leaves the tenant's IdP. Any post-issuance tampering
+with the entitlement claim invalidates the signature. The Resource Server does not need
+to trust any runtime claim about entitlements --- it trusts only the signed token.
+
+\textbf{Resource Server purity.} The Canvasflow GraphQL server has no knowledge of any
+tenant's internal product identifiers. The mapping result arrives as Canvasflow resource
+identifiers (\texttt{cf:issue:123}) already resolved; the server applies a set membership
+check --- not a mapping operation. This keeps the Resource Server stateless.
+
+\textbf{Trade-off.} Entitlement changes take effect at the user's next login or refresh.
+Existing tokens are valid until their \texttt{exp}. The maximum staleness window is
+bounded by $\texttt{exp} \le 3600$ seconds. This trade-off is acceptable for
+content delivery; if a tenant requires immediate revocation, the mitigation is to revoke
+the user's refresh token in the IdP, which prevents new access tokens from being issued
+and limits the exposure window to the remaining lifetime of the current access token.
+
+\subsection{Why Tenant-Managed Rather Than a Canvasflow Mapping Endpoint}
+
+An alternative design --- where Canvasflow provides an endpoint that the IdP hook calls
+at login time to perform the mapping --- was considered and rejected:
+
+\begin{itemize}
+  \item It would add a runtime dependency on Canvasflow's availability to every user
+    login. A Canvasflow outage would prevent tenants from logging in.
+  \item It would require the IdP hook to hold a Canvasflow API key, creating a
+    secret-management obligation on the tenant side.
+  \item The mapping logic lives closest to the data it maps. The tenant knows their own
+    product identifiers and their own users' entitlements; Canvasflow does not.
+  \item The design would require Canvasflow to build, operate, and secure a
+    tenant-facing mapping API --- increasing the attack surface of the Canvasflow
+    platform.
+\end{itemize}
+
+A Canvasflow-managed mapping endpoint is a candidate feature for a future version when
+tenant mapping volume or complexity grows beyond what can be maintained in an IdP hook.

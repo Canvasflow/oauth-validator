@@ -156,3 +156,21 @@ app.config.timestamp_*.js
 
 # Cloudflare
 .wrangler/
+
+# MacOS
+.DS_Store
+
+# LaTeX generated files
+*.aux
+*.bbl
+*.blg
+*.brf
+*.fls
+*.fdb_latexmk
+*.glo
+*.idx
+*.out
+*.synctex.gz
+*.pdf
+*.toc
+docs/build/

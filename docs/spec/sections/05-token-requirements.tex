@@ -1,0 +1,300 @@
+
+\section{Token Requirements}\label{sec:token-requirements}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Overview}
+
+
+This section defines the complete structural requirements for JWT access tokens issued
+by a tenant's IdP and presented to the Canvasflow GraphQL API. A token MUST satisfy
+every requirement in \hyperref[sec:signing-path-requirements]{\S5.2}\ through 
+\hyperref[sec:prohibited]{\S5.5} to be accepted. 
+% The normative validation sequence the Resource Server applies is defined in \texttt{spec\_appendix\_validation}.
+
+All example values in this section use: \linebreak
+\texttt{iss = https://login.tenant.com}, 
+\texttt{aud = canvasflow-api}, and entitlement values in the mandatory
+\texttt{cf:<type>:<id>} format.
+
+\subsection{Signing Path Requirements}\label{sec:signing-path-requirements}
+
+Canvasflow supports two signing paths. The choice MUST be made at onboarding and
+recorded in the tenant configuration. The two paths are not interchangeable after go-live
+without a coordinated migration.
+
+\subsubsection{Path A --- JWKS Endpoint (Preferred)}\label{sec:jwks-endpoint}
+
+The tenant's IdP signs access tokens using an asymmetric algorithm (RS256 or ES256) and
+publishes the corresponding public keys at a stable JSON Web Key Set (JWKS) endpoint per
+\href{https://datatracker.ietf.org/doc/html/rfc7517}{RFC~7517}.
+
+\textbf{Requirements:}
+
+\begin{itemize}
+  \item Algorithm MUST be RS256 or ES256 (RFC~7518~\href{https://datatracker.ietf.org/doc/html/rfc7518\#section-3.3}{\S3.3} and \href{https://datatracker.ietf.org/doc/html/rfc7518\#section-3.4}{\S3.4}).
+  \item RSA keys MUST be at minimum 2048~bits in length.
+  \item EC keys MUST use the P-256 curve.
+  \item The \texttt{kid} header claim MUST be present in every issued token and MUST
+    match a key in the JWKS endpoint.
+  \item The JWKS URL MUST be publicly accessible (no authentication required to fetch it).
+  \item The tenant MUST communicate the exact JWKS URL to Canvasflow at onboarding.
+  \item \textbf{Key rotation:} the tenant MUST publish the new key alongside the outgoing
+    key for a minimum overlap window of one hour before removing the outgoing key.
+    Canvasflow resolves \texttt{kid} dynamically against a one-hour cache; an unknown
+    \texttt{kid} triggers an immediate re-fetch. The one-hour overlap window is required
+    to prevent transient 401 errors during rotation.
+\end{itemize}
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{IdP} & \textbf{JWKS URL format} \\
+\midrule
+AWS Cognito      & {\scriptsize\texttt{https://cognito-idp.<region>.amazonaws.com/<pool-id>/.well-known/jwks.json}} \\[4pt]
+Okta             & {\scriptsize\texttt{https://<tenant>.okta.com/oauth2/v1/keys}} \\[4pt]
+Azure AD / Entra & {\scriptsize\texttt{https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys}} \\[4pt]
+Auth0            & {\scriptsize\texttt{https://<tenant>.auth0.com/.well-known/jwks.json}} \\[4pt]
+\bottomrule
+\end{tabularx}
+\caption{Well-known JWKS endpoint formats for major IdPs}
+\end{table}
+
+\pagebreak
+
+\subsubsection{Path B --- HS256 Shared Secret (Exception)}
+
+The tenant's IdP signs access tokens using HMAC-SHA256 with a shared secret that both
+the tenant and Canvasflow hold. This path is an explicit exception reserved for custom
+or lightweight IdPs that cannot publish a JWKS endpoint. It MUST be explicitly approved
+and documented by Canvasflow before use.
+
+\textbf{Requirements:}
+
+\begin{itemize}
+  \item Algorithm MUST be HS256.
+  \item The shared secret MUST be at minimum 32~bytes (256~bits) of cryptographically
+    random data. A secret shorter than 32~bytes MUST be rejected.
+  \item The \texttt{kid} header claim MUST be present in every issued token and MUST
+    match a known secret version in Canvasflow's configuration. This supports rotation.
+  \item The tenant MUST share the secret with Canvasflow via a secure channel --- never
+    via unencrypted email.
+  \item \textbf{Key rotation:} the tenant MUST notify Canvasflow before rotating the
+    secret, provide the new secret via a secure channel, and maintain the outgoing secret
+    as valid under its current \texttt{kid} for at minimum one hour after the new secret
+    begins signing tokens.
+\end{itemize}
+
+\textbf{Justification for JWKS over HS256.} The following four considerations make JWKS
+the strongly preferred path:
+
+\begin{enumerate}
+  \item \textbf{Asymmetry of forgery risk.} With JWKS (RS256/ES256), Canvasflow holds
+    only the tenant's public key. A total compromise of Canvasflow's infrastructure gives
+    an attacker no ability to forge valid tokens for any JWKS tenant. With HS256, the
+    shared secret is simultaneously a verification key and a signing key: a breach of
+    Canvasflow's secret store allows an attacker to forge arbitrary valid tokens for
+    every HS256 tenant.
+
+  \item \textbf{Self-service key rotation.} A JWKS tenant rotates keys by publishing a
+    new key pair under a new \texttt{kid} alongside the outgoing key. Canvasflow
+    resolves \texttt{kid} dynamically; rotation requires zero coordination with Canvasflow
+    and incurs zero downtime. HS256 rotation requires out-of-band secret exchange,
+    coordinated timing, and a Canvasflow-side configuration update on every rotation.
+
+  \item \textbf{No secret-handling liability.} A JWKS URL is public information. Every
+    HS256 secret Canvasflow holds is standing security liability (\hyperref[sec:canvasflow-guarantees]{\S11}).
+
+  \item \textbf{Zero marginal cost for enterprise IdPs.} AWS Cognito, Okta, Azure AD /
+    Entra, and Auth0 all publish JWKS endpoints by default.
+\end{enumerate}
+
+\textbf{Conclusion:} JWKS is the default. HS256 is an explicit, documented exception
+accepted as a trade of security posture for reduced onboarding friction, available only
+when the tenant has confirmed that a JWKS endpoint is not achievable.
+
+\subsection{Required Header Claims}
+
+The following claims MUST be present in the JWT header of every access token:
+
+
+
+\subsubsection{\texttt{typ} --- Token Type (RFC~9068~\S2.1)}\label{sec:token-type}
+
+The \texttt{typ} header MUST be set to exactly \texttt{"at+jwt"} or
+\texttt{"application/at+jwt"}.
+
+\textbf{Rationale.} This is the primary defense against token confusion attacks. An
+attacker who obtains an OIDC ID token --- which is signed by the same key as the access
+token and carries valid \texttt{iss}, \texttt{sub}, and \texttt{aud} claims --- could
+present it to the GraphQL API. Without \texttt{typ} validation, the signature would
+verify and many claim checks would pass. The \texttt{typ: "at+jwt"} header is the
+mechanism defined by 
+\href{https://datatracker.ietf.org/doc/html/rfc9068#section-2.1}{RFC~9068~\S2.1} 
+specifically to defeat this class of attack. The \texttt{typ} check MUST be 
+performed before any payload claim is inspected.
+
+
+
+\textbf{Cognito exception.} AWS Cognito emits \texttt{typ: "JWT"} and
+\texttt{token\_use: "access"} instead of \texttt{typ: "at+jwt"}. This is a documented
+non-compliance with \href{https://datatracker.ietf.org/doc/html/rfc9068}{RFC~9068}. Canvasflow accommodates this via a per-tenant
+\texttt{typ\_strict} configuration flag. When a tenant's configuration carries
+\texttt{typ\_strict = false} (set at onboarding for Cognito tenants), the Resource
+Server accepts \texttt{typ: "JWT"} and enforces \texttt{token\_use == "access"} as a
+substitute check. Tenants using Cognito MUST declare this at onboarding. All other
+tenants MUST produce \texttt{typ: "at+jwt"}.
+
+\subsubsection{\texttt{alg} --- Signing Algorithm (RFC~8725~\S3.1)}
+
+The \texttt{alg} header MUST be one of: \texttt{"RS256"}, \texttt{"ES256"},
+\texttt{"HS256"}.
+
+
+
+The value \texttt{"none"} MUST be rejected unconditionally regardless of any other token
+properties (\href{https://datatracker.ietf.org/doc/html/rfc8725#section-3.1}{RFC~8725~\S3.1}). 
+The Resource Server MUST validate the \texttt{alg} header against the allowlist 
+before performing any verification and MUST NOT use an algorithm
+value taken from the token without this check.
+
+\subsubsection{\texttt{kid} --- Key Identifier}
+
+The \texttt{kid} header MUST be present. For JWKS tenants, it selects the public key
+from the JWKS endpoint. For HS256 tenants, it selects the secret version from the stored
+secret set. A token without \texttt{kid} MUST be rejected.
+
+\pagebreak
+
+\subsection{Required Payload Claims}\label{sec:required-payload-claims}
+
+The following claims MUST be present in the JWT payload of every access token:
+
+\begin{longtable}{@{}lp{1.5cm}p{8cm}@{}}
+\toprule
+\textbf{Claim} & \textbf{Type} & \textbf{Requirement} \\
+\midrule
+\endhead
+\texttt{iss} & string &
+  Tenant issuer URL. MUST exactly match the value registered in \texttt{tenant\_config}.
+  Trailing slash is significant: \texttt{https://login.tenant.com} $\neq$
+  \texttt{https://login.tenant.com/}. \\[6pt]
+\texttt{sub} & string &
+  Stable, opaque user identifier assigned by the tenant's IdP. MUST NOT be the user's
+  email address (\href{https://datatracker.ietf.org/doc/html/rfc9068\#section-2.2}{RFC~9068~\S2.2}). 
+  The \texttt{sub} value MUST remain stable across
+  sessions for the same user. \\[6pt]
+\texttt{aud} & string or array &
+  MUST contain \texttt{"canvasflow-api"}. MAY be an array of strings
+  (\href{https://datatracker.ietf.org/doc/html/rfc7519\#section-4.1.3}{RFC~7519~\S4.1.3} 
+  permits arrays). Validation passes if \texttt{"canvasflow-api"} is
+  \emph{present} in the \texttt{aud} value --- it need not be the only value. \\[6pt]
+\texttt{iat} & number &
+  Unix timestamp of issuance (seconds since epoch). MUST NOT be more than 60~seconds in
+  the future (clock skew tolerance). \\[6pt]
+\texttt{exp} & number &
+  Unix timestamp of expiry (seconds since epoch). MUST be greater than the current time
+  (with $\leq$~60 seconds clock skew tolerance). The difference
+  $\texttt{exp} - \texttt{iat}$ MUST NOT exceed 3600~seconds. \\[6pt]
+\texttt{jti} & string &
+  Unique token identifier. A UUID is RECOMMENDED (\href{https://datatracker.ietf.org/doc/html/rfc4122}{RFC~4122}). 
+  Used for server-side log correlation; NOT used for revocation (by design --- 
+  see \hyperref[sec:canvasflow-responsibilities]{\S3.3} and 
+  \hyperref[sec:out-of-scope]{\S1.4}). \\[6pt]
+Entitlement claim & array &
+  One of \texttt{cf:entitlements}, \texttt{resources}, or \texttt{entitlements} per the
+  precedence rules in \hyperref[sec:claim-name-hierarchy]{\S4.3}. The resolved value MUST
+  be a JSON array of strings. An empty array is valid. \\
+\bottomrule
+\end{longtable}
+
+\begin{quote}
+  \textbf{Auth0 \texttt{aud} note.} When the \texttt{openid} scope is requested, Auth0
+  includes both \linebreak \texttt{"canvasflow-api"} and the Auth0 \texttt{/userinfo} URL in the
+  \texttt{aud} claim as an array. This is fully compliant with 
+  \href{https://datatracker.ietf.org/doc/html/rfc7519\#section-4.1.3}{RFC~7519~\S4.1.3}.
+  Canvasflow's validation passes as long as \texttt{"canvasflow-api"} is present in the
+  array.
+\end{quote}
+
+\pagebreak
+
+\subsection{Prohibited}\label{sec:prohibited}
+
+The following MUST NOT appear in any conforming access token:
+
+
+
+
+
+\begin{longtable}{@{}p{5.5cm}p{9cm}@{}}
+\toprule
+\textbf{Prohibited} & \textbf{Reason} \\
+\midrule
+\endhead
+\texttt{alg: "none"} &
+  Eliminates signature verification entirely; unconditional rejection per 
+  \href{https://datatracker.ietf.org/doc/html/rfc8725\#section-3.1}{RFC~8725~\S3.1}. \\[6pt]
+\texttt{typ} absent, \texttt{typ: "JWT"} (except Cognito with \texttt{typ\_strict=false}), \texttt{typ: "id\_token+jwt"}, or any other non-compliant \texttt{typ} &
+  Enables token confusion attacks (\href{https://datatracker.ietf.org/doc/html/rfc9068\#section-2.1}{RFC~9068~\S2.1}). \\[6pt]
+PII in the access token payload (name, email, physical address, phone number) &
+  Access tokens traverse multiple systems; PII creates unnecessary exposure risk. \\[6pt]
+RSA key shorter than 2048~bits &
+  Computationally feasible to break; below the minimum security level for RS256
+  (\href{https://datatracker.ietf.org/doc/html/rfc7518\#section-3.3}{RFC~7518~\S3.3}). \\[6pt]
+$\texttt{exp} - \texttt{iat}$ greater than 3600~seconds &
+  Exceeds the maximum allowed revocation window (\hyperref[sec:revocation]{\S1.4}, Core Design Principle~3). \\[6pt]
+Entitlement claim placed in the ID token instead of the access token &
+  The ID token is consumed by the SPA and never sent to the API; the claim would be
+  silently absent from the Resource Server's perspective. \\[6pt]
+Email address as \texttt{sub} &
+  Email addresses are mutable; \texttt{sub} must be a stable, opaque identifier
+  (\href{https://datatracker.ietf.org/doc/html/rfc9068\#section-2.2}{RFC~9068~\S2.2}). \\
+\bottomrule
+\end{longtable}
+
+\pagebreak
+
+\subsection{Conforming Token Example}
+
+The following example shows a fully conforming JWT access token using the JWKS (RS256)
+signing path and the recommended \texttt{cf:entitlements} claim name.
+\linebreak\linebreak
+\textbf{Header:}
+
+\begin{lstlisting}[language=json]
+{
+  "typ": "at+jwt",
+  "alg": "RS256",
+  "kid": "tenant-key-v3"
+}
+\end{lstlisting}
+
+\textbf{Payload:}
+
+\begin{lstlisting}[language=json]
+{
+  "iss": "https://login.tenant.com",
+  "sub": "usr_7f3a9c1d-opaque",
+  "aud": "canvasflow-api",
+  "iat": 1720224000,
+  "exp": 1720227600,
+  "jti": "a8f3c1d2-9e4b-4f7a-b6c5-1234567890ab",
+  "client_id": "canvasflow-pwa",
+  "cf:entitlements": ["cf:issue:123", "cf:issue:201"]
+}
+\end{lstlisting}
+
+
+
+Notes on this example:
+\begin{itemize}
+  \item $\texttt{exp} - \texttt{iat} = 3600$ seconds --- the maximum allowed.
+  \item \texttt{cf:entitlements} is used (recommended claim name --- works on all IdPs).
+  \item All entitlement values carry the mandatory \texttt{cf:} prefix.
+  \item \texttt{sub} is an opaque identifier, not an email address.
+  \item \texttt{jti} is a UUID per \href{https://datatracker.ietf.org/doc/html/rfc4122}{RFC~4122}.
+\end{itemize}
+
+% The full ordered validation sequence the Resource Server applies to this token is defined in \texttt{spec\_appendix\_validation}.

@@ -1,0 +1,178 @@
+\section{Responsibilities}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Purpose}
+
+This section defines the responsibility boundary between the tenant (acting as the
+OAuth~2.0 Authorization Server, 
+\href{https://datatracker.ietf.org/doc/html/rfc6749#section-1.1}{RFC~6749~\S1.1}) 
+and Canvasflow (acting as the OAuth~2.0 Resource Server, 
+\href{https://datatracker.ietf.org/doc/html/rfc6749#section-1.1}{RFC~6749~\S1.1}). 
+This matrix is the contractual heart of the integration. Any ambiguity about 
+which party is responsible for a given function is resolved here.
+
+\subsection{Tenant Responsibilities (Authorization Server)}
+
+The tenant is the Authorization Server in the sense of 
+\href{https://datatracker.ietf.org/doc/html/rfc6749#section-1.1}{RFC~6749~\S1.1}. 
+The tenant is solely responsible for the following:
+
+\subsubsection{User Authentication}
+
+The tenant MUST perform all user authentication. This includes, but is not limited to:
+credential verification (username and password, passkeys, certificates),
+multi-factor authentication (MFA), social identity connections, and session initiation
+and termination. Canvasflow has no visibility into the tenant's authentication mechanisms
+and makes no assumptions about them.
+
+\subsubsection{Authorization Decisions}
+
+The tenant MUST make all authorization decisions. The determination of which users are
+entitled to which Canvasflow resources is entirely the tenant's responsibility. These
+decisions are encoded by the pre-token hook at login and refresh time and sealed into
+the signed JWT. Canvasflow enforces these decisions; it does not make them.
+
+\subsubsection{Entitlement Mapping}
+
+The tenant MUST maintain the mapping between their internal product or entitlement
+identifiers and Canvasflow resource identifiers. This mapping table lives inside the
+tenant's own system --- in the IdP hook, a directory attribute, a hardcoded table, or a
+lookup against the tenant's own database. The form is the tenant's choice; the output
+MUST be an array of Canvasflow resource identifiers in \texttt{cf:<type>:<id>} format
+(see \hyperref[sec:mandatory-value-format]{Entitlement Mapping \S4.2}).
+
+This mapping MUST be re-evaluated on every login and every token refresh. The hook MUST
+NOT copy the entitlement claim from a prior token; it MUST read from the tenant's live
+source of truth on each invocation. This ensures that changes to entitlements propagate
+within the revocation window ($\leq$ 3600~seconds, governed by the access token
+\texttt{exp}).
+
+\pagebreak
+
+\subsubsection{Token Signing and Key Protection}
+
+The tenant MUST sign all access tokens using a signing method that Canvasflow supports
+(\hyperref[sec:signing-path-requirements]{\S5.2}). The tenant MUST protect its signing private keys (JWKS path) or shared secrets
+(HS256 path). Canvasflow's guarantee that it cannot forge tokens on behalf of the tenant
+depends on the tenant maintaining exclusive control of their private signing keys.
+
+\subsubsection{Key Rotation}
+
+\begin{itemize}
+  \item \textbf{JWKS path:} The tenant MAY rotate keys at any time by publishing a new
+    key pair under a new \texttt{kid} in their JWKS endpoint. The tenant MUST maintain
+    the outgoing key in the JWKS for a minimum overlap window of one hour after the new
+    key begins signing tokens. No coordination with Canvasflow is required for JWKS key
+    rotation.
+
+  \item \textbf{HS256 path:} The tenant MUST notify Canvasflow before rotating a shared
+    secret. The tenant MUST provide the new secret via a secure channel and MUST
+    maintain the outgoing secret as valid under its existing \texttt{kid} for a minimum
+    of one hour after the new secret takes effect.
+\end{itemize}
+
+\subsubsection{Session Lifecycle}\label{sec:session-lifecycle}
+
+The tenant is responsible for login, silent refresh, logout, and revocation of user
+sessions. If the tenant needs to immediately cut off a user's access, the tenant MUST
+revoke the user's refresh token in the IdP. The residual access window is bounded by
+the access token \texttt{exp} ($\leq$ 3600~seconds). Canvasflow has no mechanism to
+accelerate this revocation --- that is by design (see \hyperref[sec:out-of-scope]{\S1.4}).
+
+
+
+\subsubsection{OAuth Client Registration}
+
+The tenant MUST register the Canvasflow SPA as a public OAuth~2.0 client in their IdP
+with the exact settings required in \hyperref[sec:tenant-side-setup]{\S9.3} (Step 2.2), including:
+
+\begin{itemize}
+  \item The exact callback URI: \texttt{https://www.<tenant-domain>/callback}
+  \item Grant type: Authorization Code with PKCE (S256)
+  \item Token endpoint authentication method: none (public client --- no client secret)
+  \item Access token format: JWT with \texttt{typ: "at+jwt"} in the header
+  \item Access token lifetime: $\leq$ 3600~seconds
+\end{itemize}
+
+\pagebreak
+
+\subsection{Canvasflow Responsibilities (Resource Server)}\label{sec:canvasflow-responsibilities}
+
+Canvasflow is the Resource Server in the sense of 
+\href{https://datatracker.ietf.org/doc/html/rfc6749#section-1.1}{RFC~6749~\S1.1}. 
+Canvasflow is responsible for the following:
+
+\subsubsection{Token Validation on Every Request}
+
+Canvasflow MUST validate the cryptographic signature and all required claims of every
+access token received at the GraphQL API. 
+% The complete, ordered validation sequence is defined in \texttt{spec\_appendix\_validation}. 
+No request is authorized without passing the full sequence.
+
+\subsubsection{Content Gating}
+
+Canvasflow MUST gate GraphQL content strictly by the verified entitlement claim. Content
+Canvasflow classifies as free MUST be returned to any bearer of a valid access token,
+regardless of the entitlement set. Content Canvasflow classifies as premium MUST be
+returned only when the matching \texttt{cf:<type>:<id>} value is present in the
+effective entitlement set (see \hyperref[sec:claim-name-hierarchy]{Entitlement Mapping \S4.3}). 
+Canvasflow MUST NOT apply any additional authorization logic beyond 
+what the signed token encodes.
+
+\subsubsection{JWKS Caching}
+
+Canvasflow MUST fetch tenant JWKS documents server-side only and MUST cache them with a
+TTL of one hour. An incoming token whose \texttt{kid} is not found in the cache triggers
+an immediate JWKS re-fetch. Canvasflow MUST NOT serve stale JWKS keys when a re-fetch
+fails; it MUST reject the token. JWKS key material is never exposed to clients.
+
+\subsubsection{HS256 Secret Storage}
+
+Canvasflow MUST store HS256 shared secrets encrypted at the application layer using
+AES-256-GCM with a KMS-managed key. Secrets MUST never appear in logs or error
+responses. Canvasflow MUST notify the affected tenant within 24~hours of any confirmed
+or suspected compromise of a stored HS256 secret.
+
+\subsubsection{Generic Error Responses}
+
+Canvasflow MUST return generic 401 responses on all token validation failures. The
+response MUST NOT reveal which validation step failed, which tenant was involved, or
+which claim was absent or malformed. Detailed failure reasons are logged server-side and
+correlated by \texttt{jti}. This policy is a security requirement; it prevents both
+tenant enumeration and targeted token-forgery attacks.
+
+\subsubsection{Resource ID Stability}
+
+Canvasflow MUST NOT change the Canvasflow resource IDs (for example, \texttt{cf:issue:123})
+assigned to a tenant after onboarding without prior written notice to the tenant's
+designated technical lead. Resource ID stability is essential because these values are
+hardcoded into the tenant's IdP hook mapping table.
+
+\subsubsection{No Runtime Calls to the Tenant IdP}
+
+Canvasflow MUST NOT call the tenant IdP at API request time for any purpose other than
+a JWKS cache refresh triggered by an unknown \texttt{kid}. The tenant's IdP availability
+MUST NOT be a dependency for serving already-issued access tokens.
+
+\subsection{Justification}
+
+The responsibility distribution above was designed to maximize system reliability and
+minimize coupling.
+
+\textbf{Stateless Resource Server.} By confining all authorization logic to the signed
+JWT --- a decision sealed by the tenant's IdP before the token reaches Canvasflow --- the
+Resource Server requires zero network calls in the hot path (JWKS key cache is warm).
+This makes the Canvasflow API horizontally scalable without coordination and removes the
+tenant's IdP from the availability dependency chain of every API request.
+
+\textbf{Clean trust boundary.} The signed JWT is the sole interface between the two
+systems. A tenant that rotates its signing keys, changes its user directory, or migrates
+IdP platforms does so without touching the Canvasflow API layer, provided the output
+token structure remains conformant with this specification.
+
+\textbf{Bounded revocation window as a trade-off.} Delegating revocation to the tenant
+and bounding the exposure window by $\texttt{exp} \leq 3600\,\mathrm{s}$ is a deliberate
+design choice that preserves the stateless Resource Server model. This trade-off is
+acceptable for content delivery and is documented here --- not hidden --- so that tenants
+can evaluate it against their security requirements.

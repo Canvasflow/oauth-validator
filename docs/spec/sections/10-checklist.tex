@@ -1,0 +1,136 @@
+
+\section{On-Boarding Checklist}
+
+\begin{notebox}
+This checklist is an operational companion to \hyperref[sec:on-boarding]{Client On-Boarding}. It translates
+the three-phase onboarding process into a literal, verifiable checkbox list.
+ALL items MUST be checked before the tenant's \texttt{status} transitions to
+\texttt{'active'}.
+\end{notebox}
+
+\subsection*{Tenant Items}
+
+\begin{notebox}
+The tenant's technical lead completes these items.
+\end{notebox}
+
+\subsubsection*{OAuth Client Registration}
+
+\begin{itemize}[label=$\square$, leftmargin=2em]
+  \item Canvasflow SPA registered as an OAuth~2.0 client in the tenant's IdP with:
+    \begin{itemize}[label=$\square$, leftmargin=2em]
+      \item Grant type: Authorization Code
+      \item PKCE: enabled, S256 method required
+      \item Redirect URI: \texttt{https://app.canvasflow.io/callback} (exact match, no
+        trailing slash)
+      \item Token endpoint authentication: none (public client --- no client secret)
+      \item Access token format: JWT with \texttt{typ: "at+jwt"} in header
+      \item Access token lifetime: $\leq$ 3600~seconds
+    \end{itemize}
+  \item \textbf{(Auth0 only)} API registration created with
+    \texttt{identifier = canvasflow-api} and connected to the Application
+\end{itemize}
+
+\subsubsection*{Pre-Token Hook}
+
+\begin{itemize}[label=$\square$, leftmargin=2em]
+  \item Hook implemented and deployed for the correct trigger event:
+    \begin{itemize}[label=$\square$, leftmargin=2em]
+      \item \textbf{(Cognito)} Pre Token Generation Lambda trigger, event version V2\_0
+      \item \textbf{(Okta)} Token Inline Hook
+      \item \textbf{(Azure AD / Entra)} Custom Claims Provider
+        (\texttt{onTokenIssuanceStart})
+      \item \textbf{(Auth0)} Post-Login Action deployed AND attached in Triggers
+    \end{itemize}
+  \item Hook writes entitlement claim to the \textbf{access token} (not the ID token)
+  \item Hook uses the correct claim name:
+    \begin{itemize}[label=$\square$, leftmargin=2em]
+      \item \texttt{cf:entitlements} $\leftarrow$ RECOMMENDED for all IdPs; REQUIRED for
+        Auth0
+      \item \texttt{resources} $\leftarrow$ legacy; supported but migration to
+        \texttt{cf:entitlements} is recommended
+      \item \texttt{entitlements} $\leftarrow$ usable only on IdPs that do not blocklist
+        it (not Auth0)
+    \end{itemize}
+  \item All emitted entitlement values use the mandatory \texttt{cf:<type>:<id>} format
+    (e.g., \texttt{cf:issue:123}). No raw or un-prefixed values emitted.
+  \item Hook re-evaluates entitlements from source on every login AND every refresh
+    (does NOT copy from previous token)
+  \item Hook emits an explicit empty array (\texttt{[]}) when the user has no premium
+    entitlements (does NOT omit the claim)
+\end{itemize}
+
+\subsubsection*{Signing Configuration}
+
+\begin{itemize}[label=$\square$, leftmargin=2em]
+  \item Signing path confirmed and configured:
+    \begin{itemize}[label=$\square$, leftmargin=2em]
+      \item \textbf{JWKS path (preferred):} JWKS URL obtained and confirmed publicly
+        accessible; tokens include \texttt{kid} header matching a key in the JWKS;
+        algorithm is RS256 or ES256; RSA keys are $\geq$ 2048~bits
+      \item \textbf{HS256 path (exception):} Secret generated ($\geq$ 32~bytes,
+        cryptographically random); \texttt{kid} header present in tokens; HS256
+        exception approved by Canvasflow
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{Credentials Shared with Canvasflow}
+
+\begin{itemize}[label=$\square$, leftmargin=2em]
+  \item Exact \texttt{iss} value (as it appears in issued tokens) confirmed and provided
+    to Canvasflow
+  \item \texttt{client\_id} confirmed and provided to Canvasflow
+  \item \textbf{JWKS path:} JWKS URL provided to Canvasflow
+  \item \textbf{HS256 path:} Secret shared with Canvasflow via secure channel (not
+    email)
+  \item Canvasflow has confirmed receipt and updated \texttt{tenant\_config} with signing
+    credentials
+\end{itemize}
+
+\subsection*{Validator Items}
+
+\begin{notebox}
+The tenant's technical lead runs the Canvasflow OAuth Validator at
+\url{https://oauth.canvasflow.work} and MUST produce all-green results on all five
+checks before evidence is submitted.
+\end{notebox}
+
+\begin{itemize}[label=$\square$, leftmargin=2em]
+  \item \textbf{V1 --- Token Structure:} All-green
+    \begin{itemize}[label=$\square$, leftmargin=2em]
+      \item \texttt{typ: "at+jwt"} present in header (or Cognito: \texttt{typ: "JWT"} +
+        \texttt{token\_use: "access"})
+      \item \texttt{kid} present in header
+      \item \texttt{iss} exactly matches registered value
+      \item \texttt{aud} contains \texttt{"canvasflow-api"}
+      \item Entitlement claim present as an array under one of the three supported names
+      \item $\texttt{exp} - \texttt{iat} \leq 3600$~seconds
+    \end{itemize}
+  \item \textbf{V2 --- Signature Verification:} Server-side signature check passes (JWKS
+    or HS256)
+  \item \textbf{V3 --- Entitlement Normalization and Value Format:} All-green
+    \begin{itemize}[label=$\square$, leftmargin=2em]
+      \item Expected Canvasflow resource IDs present in effective entitlement set
+      \item All emitted values carry \texttt{cf:} prefix; no non-prefixed values (or any
+        flagged non-prefixed values have been corrected)
+    \end{itemize}
+  \item \textbf{V4 --- Refresh Flow:} Refresh grant succeeds; new access token carries
+    freshly evaluated entitlements
+  \item \textbf{V5 --- Expiry Behavior:} Expired token returns 401; refresh restores API
+    access
+  \item Validator evidence (screenshots or export) submitted to Canvasflow for joint
+    review
+  \item Joint review completed; Canvasflow has confirmed all-green status
+\end{itemize}
+
+\subsection*{Go-Live Items}
+
+\begin{notebox}
+Canvasflow completes these items after all Validator Items are confirmed green.
+\end{notebox}
+
+\begin{itemize}[label=$\square$, leftmargin=2em]
+  \item \texttt{tenant\_config.status} updated from \texttt{pending} to \texttt{active}
+  \item Tenant's technical lead notified of production go-live
+  \item Tenant confirms first successful production login by a real user
+\end{itemize}
