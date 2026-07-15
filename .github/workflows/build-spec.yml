@@ -27,15 +27,16 @@ jobs:
         run: make pdf
         working-directory: docs
 
-      - name: Commit built PDF
+      - name: Extract version
+        id: version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           VERSION=$(grep -oP '(?<=\\newcommand\{\\specversion\}\{)[^}]+' docs/spec/version.tex)
-          git add docs/build/
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "docs: build spec PDF v${VERSION}"
-            git push
-          fi
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: spec-v${{ steps.version.outputs.value }}
+          name: Spec v${{ steps.version.outputs.value }}
+          files: docs/build/canvasflow-tenant-spec-v${{ steps.version.outputs.value }}.pdf
+          make_latest: false
