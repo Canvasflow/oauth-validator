@@ -30,7 +30,7 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(grep -oP '(?<=\\newcommand\{\\specversion\}\{)[^}]+' docs/spec/version.tex)
+          VERSION=$(awk -F'[{}]' '/specversion/{print $4}' docs/spec/version.tex)
           echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
@@ -38,5 +38,6 @@ jobs:
         with:
           tag_name: spec-v${{ steps.version.outputs.value }}
           name: Spec v${{ steps.version.outputs.value }}
-          files: docs/build/canvasflow-tenant-spec-v${{ steps.version.outputs.value }}.pdf
+          files: docs/build/canvasflow-tenant-spec-v*.pdf
+          fail_on_unmatched_files: true
           make_latest: false
