@@ -30,7 +30,8 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          VERSION=$(awk -F'[{}]' '/specversion/{print $4}' docs/spec/version.tex)
+          VERSION=$(grep '\\specversion' docs/spec/version.tex | sed 's/.*{\([^}]*\)}[[:space:]]*$/\1/')
+          echo "Extracted version: ${VERSION}"
           echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
