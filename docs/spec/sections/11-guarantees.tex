@@ -1,0 +1,137 @@
+
+\section{Canvasflow Guarantees}\label{sec:canvasflow-guarantees}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Purpose}
+
+This section defines the commitments Canvasflow makes to every tenant who has completed
+onboarding and whose \texttt{status} is \texttt{active}. These guarantees define
+Canvasflow's obligations under the integration contract and bound the expectations a
+tenant may reasonably hold of the Canvasflow Resource Server.
+
+\subsection{Signature Validation on Every Request}
+
+Canvasflow WILL validate the cryptographic signature and all required claims of every
+access token received at the GraphQL API on every request, without exception. No request
+is granted content access without passing the full validation sequence.
+ There are no bypass paths, administrative overrides, or ``trusted subnet'' 
+ exceptions to token validation.
+
+\subsection{Content Gating}
+
+Canvasflow WILL gate GraphQL content strictly by the verified entitlement claim --- and
+nothing else. Specifically:
+
+
+
+\begin{itemize}
+  \item Content Canvasflow classifies as \textbf{free} WILL be returned to any bearer of
+    a valid, verified access token, regardless of the effective entitlement set (even if
+    the entitlement set is empty).
+
+  \item Content Canvasflow classifies as \textbf{premium} WILL be returned only when the
+    matching \texttt{cf:<type>:<id>} value is present in the effective entitlement set
+    (computed per \hyperref[sec:mandatory-value-format]{Entitlement Mapping \S4.2}).
+
+  \item Canvasflow WILL NOT invent, infer, or apply any additional authorization logic
+    beyond what the signed token encodes. If a resource identifier appears in the
+    verified entitlement set, access is granted. If it does not appear, access is not
+    granted. No exceptions.
+\end{itemize}
+
+\subsection{JWKS Caching Behavior}
+
+Canvasflow's JWKS caching behavior for JWKS-path tenants:
+
+\begin{itemize}
+  \item JWKS documents are fetched and cached \textbf{server-side only} with a cache TTL
+    of one hour. JWKS key material is never exposed to clients or included in API
+    responses.
+
+  \item An incoming token whose \texttt{kid} is not present in the current cache WILL
+    trigger an \textbf{immediate re-fetch} of the tenant's JWKS endpoint. The token is
+    validated against the freshly fetched key set before being accepted or rejected.
+
+  \item If the JWKS re-fetch fails (network error, timeout, or non-200 response),
+    Canvasflow WILL NOT fall back to the stale cached key set. The token WILL be rejected
+    with 401. This policy prevents a degraded JWKS endpoint from becoming a persistent
+    authentication bypass.
+
+  \item Canvasflow WILL NOT cache JWKS data in a way that persists beyond the one-hour
+    TTL unless a re-fetch confirms the key is still valid.
+\end{itemize}
+
+\subsection{HS256 Secret Handling}
+
+For HS256-path tenants, Canvasflow commits to the following:
+
+\begin{itemize}
+  \item Shared secrets are stored \textbf{encrypted at rest} using AES-256-GCM at the
+    application layer, with a KMS-managed encryption key. Database-level encryption alone
+    is not the sole protection.
+
+  \item Secrets WILL NEVER appear in server logs, error responses, debugging output, or
+    any client-visible channel, under any circumstances.
+
+  \item Canvasflow WILL notify the affected tenant within \textbf{24~hours} of any
+    confirmed or suspected compromise of a stored HS256 secret, including disclosure of
+    the nature and scope of the compromise and the steps taken to mitigate it.
+\end{itemize}
+
+\subsection{Generic Error Responses}
+
+All token validation failures WILL return the same generic 401 response:
+
+\begin{lstlisting}
+HTTP 401 Unauthorized
+WWW-Authenticate: Bearer error="invalid_token"
+\end{lstlisting}
+
+The response body WILL contain only a generic error message. It WILL NOT reveal:
+\begin{itemize}
+  \item Which validation step failed (e.g., ``expired token'' vs.\ ``invalid signature'')
+  \item Which tenant's token was presented
+  \item Which claim was absent or malformed
+  \item Which signing path was attempted
+\end{itemize}
+
+Detailed failure reasons are logged server-side and correlated by \texttt{jti} (when
+extractable). These logs are accessible to Canvasflow support for debugging with the
+tenant's consent; they are never included in client-facing responses.
+
+This policy is a security requirement. Specific validation failure messages enable
+targeted token-forgery attacks by providing feedback about which properties of a crafted
+token are correct.
+
+\subsection{Resource Identifier Stability}
+
+Canvasflow resource identifiers (e.g., \texttt{cf:issue:123}) assigned to a tenant
+during Phase~1 of onboarding WILL NOT change after go-live without:
+
+\begin{itemize}
+  \item Prior written notice to the tenant's designated technical lead
+  \item A mutually agreed migration window sufficient for the tenant to update their IdP
+    hook mapping table
+\end{itemize}
+
+A change to resource identifiers without advance notice would silently break the tenant's
+entitlement mapping and deprive entitled users of content. Canvasflow treats resource
+ID stability as a hard commitment.
+
+\subsection{No Runtime Calls to the Tenant IdP}
+
+Canvasflow WILL NOT call the tenant's IdP at API request time for any purpose other than
+JWKS cache refresh (triggered by an unknown \texttt{kid}). The tenant's IdP availability
+is NOT a dependency for serving already-issued access tokens. A tenant IdP outage WILL
+NOT cause Canvasflow to reject valid, unexpired tokens that were issued before the outage
+began.
+
+Canvasflow will not perform token introspection, revocation checks, or any other
+real-time verification against the tenant's Authorization Server on the request path.
+
+\subsection{No Token Issuance by Canvasflow}
+
+Canvasflow WILL NEVER issue, mint, modify, extend, or re-sign tokens on a tenant's
+behalf. All token issuance is the exclusive responsibility of the tenant's Authorization
+Server. Canvasflow's cryptographic role is limited to verification.

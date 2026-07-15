@@ -1,0 +1,314 @@
+
+\section{Frequently Asked Questions}
+
+\begin{quote}
+\textit{\textbf{Audience note:} This section is written in plain English for
+non-technical stakeholders, business contacts, and junior developers who need practical
+clarity without deep protocol jargon. It deliberately departs from the RFC tone used in
+all other sections of this specification. If a question involves a normative requirement,
+the relevant section of the spec is linked for reference.}
+\end{quote}
+
+\paragraph{Q1: Why doesn't Canvasflow support immediate token revocation?}
+
+\textbf{Short answer:} It's a deliberate design choice, not a missing feature.
+
+Here's the thing: when your user logs in, your IdP (your identity system) creates a
+signed token and hands it to our app. That token is like a signed ticket --- once it's
+been signed and issued, Canvasflow has no way to ``un-sign'' it. We're only reading the
+ticket, not the box office.
+
+To immediately revoke access, you would need to call Canvasflow's server on every single
+API request to check ``is this token still valid?'' --- but that would mean Canvasflow has
+to phone home to your system tens or hundreds of times per session. That creates a
+dependency: if your system is slow or down, your users can't use Canvasflow either. We
+chose not to build that dependency.
+
+Instead, tokens are short-lived --- they expire after at most one hour. If you remove a
+user's access in your system today, they lose it at their next login or when their token
+expires, whichever comes first. That's the revocation window.
+
+\textbf{If you need faster revocation:} revoke the user's refresh token in your IdP
+right now. That stops them from getting any new access tokens. The old access token still
+works until it expires (up to one hour), but after that they're locked out and can't
+refresh.
+
+
+
+See \hyperref[sec:out-of-scope]{\S1.4} and \hyperref[sec:freshly-evaluated-entitlements]{\S8.3} for the technical details.
+
+\paragraph{Q2: What does an empty or missing entitlements claim mean? Will my users see
+an error?}
+
+\textbf{Short answer:} No error. They just see the free content, not the premium content.
+
+If a user's token has no entitlements --- because the claim is empty, it's missing
+entirely, or all the values are in the wrong format --- Canvasflow treats them as a
+free-tier user. They can log in just fine. They'll see everything Canvasflow marks as
+free content. They just won't see anything behind a paywall.
+
+A few things worth knowing:
+\begin{itemize}
+  \item \textbf{Empty array (\texttt{[]})} is valid and intentional. If someone is on a
+    free plan, have your hook emit an empty array. That's the correct signal.
+  \item \textbf{Missing claim entirely} works the same as empty, but we log it on our
+    side as a possible misconfiguration --- because we can't tell if it's intentional or a
+    bug in your hook.
+  \item \textbf{Wrong format} (more on this in Q9) also results in free content, not an
+    error.
+\end{itemize}
+
+See \hyperref[sec:free-content-baseline]{\S4.4} for the full details.
+
+\pagebreak
+
+\paragraph{Q3: Which claim name should I use for entitlements?}
+
+\textbf{Short answer:} Use \texttt{cf:entitlements}. It works everywhere.
+
+There are three claim names Canvasflow accepts:
+\begin{enumerate}
+  \item \texttt{cf:entitlements} --- \textbf{use this one}. Works on every IdP, including
+    Auth0.
+  \item \texttt{resources} --- a legacy claim name, still supported for backward
+    compatibility. If you're starting fresh, skip it.
+  \item \texttt{entitlements} --- the official standards-based name (from an internet
+    standard called RFC~9068). Works on most IdPs, but Auth0 blocks it. Risky choice.
+\end{enumerate}
+
+If you're using Auth0, you must use \texttt{cf:entitlements} --- the other names will be
+quietly dropped by Auth0 and you won't get an error, your claim just won't show up.
+
+If all three are somehow present in a single token (unusual, but possible if you have
+multiple hooks), \texttt{cf:entitlements} wins and the others are ignored.
+
+See \hyperref[sec:claim-name-hierarchy]{\S4.3} for the precise rules.
+
+\paragraph{Q4: Why is my Auth0 token opaque? Why is my custom claim missing?}
+
+These are the two most common Auth0 ``gotchas.'' Here's the checklist:
+
+\textbf{Token is opaque (looks like a random string, not a JSON Web Token):}
+\begin{itemize}
+  \item You need to register an \textbf{API} in Auth0, not just an Application. The
+    API's Identifier must be set to \texttt{canvasflow-api}.
+  \item Your authorization request from the SPA must include
+    \texttt{audience=canvasflow-api}.
+  \item Without both of these, Auth0 gives you a short opaque token instead of a JWT.
+    Canvasflow can't read opaque tokens.
+\end{itemize}
+
+\textbf{Custom claim is missing from the token:}
+\begin{itemize}
+  \item You MUST use \texttt{cf:entitlements} as the claim name. Auth0 silently drops
+    claim names like \texttt{entitlements} or \texttt{resources} from access tokens
+    (they're on Auth0's blocklist for non-namespaced claims).
+  \item Make sure your Action is deployed \textbf{and} attached to the post-login
+    Trigger in \textbf{Actions $\to$ Triggers}. A deployed-but-unattached Action does
+    nothing.
+  \item Don't rely on \texttt{console.log} to debug --- it doesn't show up in Auth0's
+    monitoring logs. Decode the actual issued token instead.
+\end{itemize}
+
+See \hyperref[sec:auth0-notes]{\S6.3} for the full Auth0 operational notes.
+
+\paragraph{Q5: Why should I use JWKS instead of a shared secret?}
+
+\textbf{Short answer:} With JWKS, a Canvasflow breach can't be used to fake your users'
+tokens.
+
+With a shared secret (HS256), both you and Canvasflow hold the same key. If Canvasflow's
+systems were ever breached, an attacker who got that secret could forge tokens that look
+completely legitimate --- giving themselves access to your users' content.
+
+With JWKS (RS256 or ES256), you keep your private key locked inside your IdP. It never
+leaves. Canvasflow only ever gets your public key, which can verify signatures but can't
+create them. A Canvasflow breach gives an attacker your public key --- which is already
+public --- and nothing useful.
+
+The other benefits:
+\begin{itemize}
+  \item \textbf{Key rotation is painless.} Post a new key to your JWKS URL, keep the old
+    one for an hour, done. No calls to us, no downtime.
+  \item \textbf{No secret to manage on our end.} Every shared secret we hold is a
+    security liability (storage, access controls, breach notifications). JWKS eliminates
+    that.
+  \item \textbf{Your IdP probably already does this.} Cognito, Okta, Azure AD, and Auth0
+    all publish a JWKS endpoint by default.
+\end{itemize}
+
+See \hyperref[sec:signing-path-requirements]{\S5.2} for the full technical comparison.
+
+\paragraph{Q6: When does a user gain or lose access after I change their entitlements?}
+
+\textbf{At their next login or token refresh --- not immediately.}
+
+When a user logs in or their session refreshes, your hook runs again, reads their current
+entitlements from your system, and puts the result in a fresh token. So:
+\begin{itemize}
+  \item \textbf{Add an entitlement:} the user gets access on their next login or refresh.
+    If they're already logged in, they might wait up to one hour (the token lifetime).
+  \item \textbf{Remove an entitlement:} same deal. The change takes effect on their next
+    login or refresh.
+  \item \textbf{Revoke now:} invalidate their refresh token in your IdP. They can't get
+    a new access token. Their current access token still works until it expires (up to
+    one hour), then they're fully locked out.
+\end{itemize}
+
+
+This is a known trade-off of this architecture. See 
+\hyperref[sec:freshly-evaluated-entitlements]{\S8.3} and 
+\hyperref[sec:session-lifecycle]{\S3.2.6} for more.
+
+\paragraph{Q7: What happens if I accidentally put the entitlements claim in the ID token
+instead of the access token?}
+
+\textbf{Your users can log in but won't see any premium content.}
+
+The access token is what Canvasflow reads. The ID token is for your app's UI (displaying
+the user's name, picture, etc.) and is never sent to our API. If the claim ends up in
+the ID token, Canvasflow receives an access token with no entitlements --- which is treated
+as a free-tier user.
+
+Your users won't get an error. They'll just wonder why the premium content isn't showing
+up, even though they're logged in.
+
+The Canvasflow OAuth Validator (\url{https://oauth.canvasflow.work}) catches this exact
+mistake before go-live. If you run the validator and V3 shows an empty entitlement set
+when you expected content, check whether the claim ended up in the wrong token.
+
+
+
+This is the most common hook misconfiguration --- see \hyperref[sec:hook-rules]{\S6.4}, Rule~3.
+
+\paragraph{Q8: My users authenticate but only see free content. What's wrong?}
+
+This usually means Canvasflow isn't seeing any valid entitlement values in the access
+token. Work through this checklist:
+
+\begin{enumerate}
+  \item \textbf{Is the claim in the access token?} Decode the access token (not the ID
+    token) at \url{https://jwt.io}. Look for \texttt{cf:entitlements},
+    \texttt{resources}, or \texttt{entitlements}. If it's not there, your hook isn't
+    running or is targeting the wrong token (see Q7 and \hyperref[sec:hook-rules]{\S6.4}).
+
+  \item \textbf{Are the values in \texttt{cf:<type>:<id>} format?} If you see values
+    like \texttt{issue:123} or \texttt{456} --- without the \texttt{cf:} prefix --- those
+    are silently ignored. Only values starting with \texttt{cf:} count. See Q9 below.
+
+  \item \textbf{Is the claim name allowed on your IdP?} If you're on Auth0 and using
+    \texttt{entitlements} as the claim name, Auth0 silently drops it. Switch to
+    \texttt{cf:entitlements} (see Q3).
+
+  \item \textbf{Did you run the validator?} The Canvasflow OAuth Validator
+    (\url{https://oauth.canvasflow.work}) flags all of these problems with specific
+    explanations. Run it --- it's the fastest way to diagnose this.
+\end{enumerate}
+
+\paragraph{Q9: My claim has values in it but some content still isn't accessible. Why?}
+
+\textbf{The values probably aren't in the right format.}
+
+Canvasflow only pays attention to entitlement values that start with \texttt{cf:} and
+match the format \texttt{cf:<type>:<id>}. For example:
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{@{}llp{7cm}@{}}
+\toprule
+\textbf{Value} & \textbf{Accepted?} & \textbf{Why} \\
+\midrule
+\texttt{cf:issue:123} & $\checkmark$ Yes & Correct format \\
+\texttt{issue:123}    & $\times$ No      & Missing \texttt{cf:} prefix \\
+\texttt{123}          & $\times$ No      & Missing prefix and type \\
+\texttt{product:789}  & $\times$ No      & Tenant-internal format, no \texttt{cf:} prefix \\
+\bottomrule
+\end{tabular}
+\caption{Entitlement value format: accepted vs.\ rejected}
+\end{table}
+
+Values without the \texttt{cf:} prefix are silently ignored --- they don't cause an error
+and they don't grant any access. This is intentional: we don't want one bad value in the
+array to lock out the entire user.
+
+When this happens, we log the ignored values on our side correlated with the token's
+unique ID (called \texttt{jti}). If you contact Canvasflow support with the approximate
+time and a user identifier, we can pull those logs and show you exactly which values were
+ignored and why.
+
+Fix: update your hook's mapping table to emit \texttt{cf:issue:123} instead of
+\texttt{issue:123}. See \hyperref[sec:mandatory-value-format]{\S4.2} for the format specification.
+
+\paragraph{Q10: What if I rotate my JWKS keys without maintaining an overlap window?}
+
+\textbf{You'll get a brief burst of failed requests, but it self-heals.}
+
+Here's what happens: Canvasflow caches your public keys for up to one hour. If you
+remove the old key before that hour is up, new tokens (signed with the new key) arrive
+at Canvasflow, which looks in its cache for the old key ID (\texttt{kid}) and can't find
+the new one. Signature verification fails $\to$ 401 for the user.
+
+However, an unknown \texttt{kid} immediately triggers a fresh fetch of your JWKS
+endpoint. So the very next request after the failure will likely succeed, because
+Canvasflow will re-fetch and find your new key.
+
+Still, you should keep the old key in your JWKS for at least one hour after you start
+signing with the new one. This is the overlap window we ask for, and it prevents the
+brief 401 burst entirely. No-overlap rotations aren't catastrophic, but they're
+preventable. See \hyperref[sec:jwks-endpoint]{\S5.2.1} for the JWKS rotation requirements.
+
+\pagebreak
+
+\paragraph{Q11: Can the \texttt{aud} claim be an array? I'm seeing an array with two
+values.}
+
+\textbf{Yes, that's fine. We look for \texttt{canvasflow-api} inside the array, not as
+the only value.}
+
+JWT allows \texttt{aud} to be either a single string or an array of strings. Auth0 in
+particular puts both \texttt{canvasflow-api} and the Auth0 \texttt{/userinfo} URL into
+the \texttt{aud} array when you request the \texttt{openid} scope. This is
+spec-compliant.
+
+Canvasflow validates that \texttt{canvasflow-api} is \textbf{present} in the \texttt{aud}
+value --- it doesn't require it to be the only value. So an \texttt{aud} of
+{\scriptsize\texttt{["canvasflow-api",\ "https://tenant.auth0.com/userinfo"]}} passes just fine.
+See \hyperref[sec:required-payload-claims]{\S5.4} (the \texttt{aud} row in the required payload claims table).
+
+\paragraph{Q12: I use Cognito and my token has \texttt{typ: "JWT"}, not
+\texttt{typ: "at+jwt"}. Will it be rejected?}
+
+\textbf{No --- Cognito gets a special accommodation for this.}
+
+AWS Cognito doesn't follow the latest JWT access token standard 
+(\href{https://tools.ietf.org/html/rfc9068}{RFC~9068}) in the way it
+sets the \texttt{typ} header. Instead of \texttt{typ: "at+jwt"}, Cognito sets
+\texttt{typ: "JWT"} and adds a separate claim called \texttt{token\_use: "access"}.
+
+At onboarding, you declare that you're using Cognito. Canvasflow marks your tenant
+configuration with a flag that tells our validator: for this tenant, accept
+\texttt{typ: "JWT"} and check \texttt{token\_use: "access"} instead of the standard
+\texttt{typ} check. The end result is the same level of protection against token
+confusion attacks --- just using Cognito's own mechanism instead of the standard one.
+
+So: declare Cognito at onboarding and you're covered. See 
+\hyperref[sec:token-type]{\S5.3.1} for the technical details of the Cognito 
+accommodation.
+
+\paragraph{Q13: Does Canvasflow ever see my users' passwords or personal information?}
+
+\textbf{No, never.}
+
+Your IdP handles all authentication. When your user types their password, enters an MFA
+code, or clicks ``Sign in with Google,'' that happens entirely inside your system.
+Canvasflow never sees any of it.
+
+By the time anything reaches Canvasflow, it's already a signed token --- a short document
+that says ``this user is authenticated and has access to these resources.'' No password,
+no credentials, no authentication details.
+
+We also require that access tokens not include personal information like names, email
+addresses, or physical addresses (\hyperref[sec:prohibited]{\S5.5}). The ID token --- which may contain user display
+info --- is consumed by the SPA in your users' browsers and is never sent to Canvasflow's
+servers.
+

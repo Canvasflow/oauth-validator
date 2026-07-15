@@ -1,0 +1,26 @@
+\section*{Core Design Principles}
+
+The following principles are non-negotiable. Every section of this specification
+reflects them. A tenant implementation that contradicts any of these principles is
+non-conforming.
+
+\begin{enumerate}
+  \item \textbf{The tenant owns the Authorization Server.} All authentication,
+    authorization, session lifecycle, entitlement decisions, and token issuance happen
+    inside the tenant's Identity Provider (IdP). Canvasflow never authenticates users.
+
+    \item \textbf{Canvasflow is a pure Resource Server (\href{https://tools.ietf.org/html/rfc6749\#section-1.1}{RFC~6749~\S1.1}).} 
+    It validates JWT access token signatures and gates content. It does not 
+    revoke tokens, does not call the tenant IdP at request time, and makes no authorization decisions.
+
+  \item \textbf{Revocation is bounded by \texttt{exp}, by design.} \label{sec:revocation} The maximum access
+    token lifetime is 3600~seconds. This is the revocation window. It is a deliberate
+    trade-off, not a gap.
+
+  \item \textbf{The tenant owns the entitlement mapping.} Canvasflow assigns stable
+    resource IDs at onboarding. The tenant maps their internal identifiers to Canvasflow
+    IDs inside their own IdP hook. No Canvasflow endpoint is called at login time.
+
+  \item \textbf{Everything is anchored to a standard.} Every normative requirement cites
+    an RFC section inline.
+\end{enumerate}

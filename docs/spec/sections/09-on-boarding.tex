@@ -1,0 +1,257 @@
+
+\section{Client On-Boarding}\label{sec:on-boarding}
+
+\textit{Normative language per \href{https://tools.ietf.org/html/rfc2119}{RFC~2119}.}
+
+\subsection{Overview}
+
+Onboarding is a one-time, out-of-band process that MUST be completed before any tenant
+user attempts to authenticate against Canvasflow. It consists of three phases executed
+in sequence. Phases~1 and~2 may proceed in parallel for distinct workstreams, but
+Phase~3 (validation) cannot begin until both are complete.
+
+The Canvasflow OAuth Validator (\url{https://oauth.canvasflow.work}) is the mandatory
+gate for production go-live. No tenant may transition to \texttt{status = 'active'}
+without producing all-green results on validation checks V1 through V5.
+
+\subsection{Phase~1 --- Canvasflow-Side Setup}\label{sec:canvasflow-side-setup}
+
+Canvasflow completes the following steps before the tenant begins Phase~2.
+
+
+
+\textbf{Step~1 --- Assign resource identifiers.} For every publication or content
+resource the tenant is authorized to access, Canvasflow generates a stable Canvasflow
+resource identifier using the \texttt{cf:<type>:<id>} format (e.g.,
+\texttt{cf:issue:1111}). These identifiers are permanent. They MUST NOT change after
+onboarding without prior written notice to the tenant's designated technical lead
+(\hyperref[sec:canvasflow-guarantees]{\S11 Canvasflow Guarantees~6}). Once assigned, every identifier is visible in 
+the Canvasflow administration dashboard — the tenant's 
+technical lead retrieves them directly from the dashboard UI during Phase 2 (Step 2.1).
+
+\textbf{Step~2 --- Create the tenant configuration record.} Canvasflow creates a row in
+\texttt{tenant\_config} with:
+\begin{itemize}
+  \item \texttt{iss}: the tenant's IdP issuer URL (obtained from the tenant in advance)
+  \item \texttt{signing\_type}: provisionally set to \texttt{jwks}; updated to
+    \texttt{hs256} if the tenant cannot support JWKS (explicit exception, requires
+    Canvasflow approval)
+  \item \texttt{client\_id}: the OAuth client ID for the Canvasflow SPA in the tenant's
+    IdP
+  \item \texttt{audience}: \texttt{canvasflow-api}
+  \item \texttt{status}: \texttt{pending} --- the tenant cannot authenticate against
+    production until this is changed to \texttt{active} at the conclusion of Phase~3
+\end{itemize}
+
+Signing credentials (\texttt{jwks\_url} or \texttt{hs256\_secret\_encrypted}) are left
+empty until the tenant provides them in Step~2.5 of Phase~2.
+
+\textbf{Step~3 --- Provide sandbox credentials.} Canvasflow provides the tenant's
+technical lead with:
+\begin{itemize}
+  \item The Canvasflow sandbox GraphQL endpoint URL
+  \item A test user account in the Canvasflow sandbox environment for end-to-end
+    validation
+\end{itemize}
+
+\subsection{Phase~2 --- Tenant-Side Setup}\label{sec:tenant-side-setup}
+
+The tenant's technical lead performs the following steps inside their own IdP. The order
+is sequential --- each step depends on the previous.
+
+\textbf{Step~2.1 --- Retrieve resource identifiers from the Canvasflow administration dashboard.}
+
+Log into the Canvasflow administration dashboard and navigate to the publications 
+or content resources the tenant is authorized to access. For each resource, 
+copy the stable Canvasflow resource identifier displayed in the 
+UI (format: \texttt{cf:<type>:<id>}, e.g., \texttt{cf:issue:123}). These 
+identifiers are used to build the mapping table in the IdP hook (Step 2.3).
+
+Example of what the dashboard exposes:
+
+\begin{lstlisting}
+Publication: "Quarterly Review"  ->  cf:issue:123
+Publication: "Weekly Brief"      ->  cf:issue:201
+\end{lstlisting}
+
+Identifiers are stable and will not change (\hyperref[sec:canvasflow-guarantees]{\S11 Canvasflow Guarantees~6}). 
+They may be stored in the tenant's own systems for future reference.
+
+\textbf{Step~2.2 --- Register the Canvasflow SPA as an OAuth client.}
+
+Configure the client registration in the tenant's IdP with the following mandatory
+settings:
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+\textbf{Setting} & \textbf{Required value} \\
+\midrule
+Grant type & Authorization Code \\
+PKCE & Required, S256 method \\
+Redirect URI & The tenant-specific callback URI:\texttt{https://www.<tenant-domain>/callback} — use the tenant's actual domain \\
+Allowed scopes & \texttt{openid} at minimum \\
+Token endpoint authentication & None (public client --- no client secret) \\
+Access token format & JWT with \texttt{typ: "at+jwt"} in the header \\
+Access token lifetime & $\leq$ 3600~seconds \\
+\bottomrule
+\end{tabularx}
+\caption{Canvasflow SPA client registration settings}
+\end{table}
+
+Auth0 tenants MUST also register an API with \texttt{identifier = canvasflow-api}
+(\hyperref[sec:api-registration-required]{\S6.3.4}).
+
+
+
+\textbf{Step~2.3 --- Implement and test the pre-token hook.}
+
+
+
+Implement the hook per the per-IdP guidance in \hyperref[sec:per-idp-implementation]{\S6.2} ,
+following all four hook rules (\hyperref[sec:hook-rules]{\S6.4}). The hook must:
+\begin{itemize}
+  \item Inject \texttt{cf:entitlements} (\texttt{cf:entitlements} is RECOMMENDED 
+  for all new integrations) into the
+    \textbf{access token} (not the ID token)
+  \item Re-evaluate entitlements from source on every login AND every refresh
+  \item Emit an explicit empty array for users with no premium entitlements
+  \item Produce values in \texttt{cf:<type>:<id>} format only, using the identifiers 
+  copied from the Canvasflow administration dashboard in Step 2.1
+\end{itemize}
+
+After implementing, perform a test login and decode the resulting access token using
+\url{https://jwt.io} or the Canvasflow OAuth Validator. Confirm that the entitlement
+claim is present in the access token payload, not the ID token.
+
+\textbf{Step~2.4 --- Configure signing and confirm credentials.}
+
+\textit{JWKS path:} Confirm the IdP's JWKS URL. Verify that:
+\begin{itemize}
+  \item Issued tokens include a \texttt{kid} header matching a key in the JWKS
+  \item The signing algorithm is RS256 or ES256
+  \item RSA keys are at minimum 2048~bits
+\end{itemize}
+
+\textit{HS256 path (exception only):} Generate a cryptographically random secret of at
+minimum 32~bytes. Confirm the \texttt{kid} header is present in issued tokens.
+
+\textbf{Step~2.5 --- Share credentials with Canvasflow.}
+
+Provide Canvasflow with:
+\begin{itemize}
+  \item \textbf{JWKS path:} the JWKS URL (public --- no secure channel required)
+  \item \textbf{HS256 path:} the secret via a secure channel (encrypted message, shared
+    secrets manager, or a call with screen share --- never unencrypted email)
+  \item The exact \texttt{iss} value as it appears in issued tokens (trailing slash is
+    significant)
+  \item The \texttt{client\_id} registered in Step~2.2
+  \item The tenant-specific callback URI registered in Step~2.2
+    (e.g., \linebreak \texttt{https://www.tenant-domain.com/callback})
+\end{itemize}
+
+Canvasflow updates the \texttt{tenant\_config} row with these values and confirms
+receipt.
+
+\pagebreak
+
+\subsection{Phase~3 --- Validation Using the Canvasflow OAuth Validator}
+
+\subsubsection{The Validator Tool}
+
+The Canvasflow OAuth Validator (\url{https://oauth.canvasflow.work}) is a browser-based
+tool that executes the real Authorization Code + PKCE flow against the tenant's IdP ---
+no simulation, no mocked responses, no OAuth libraries. It uses the Web Crypto API
+directly for PKCE, decodes and annotates every JWT claim with Canvasflow-specific
+checks, verifies signatures server-side (JWKS fetch or shared
+HMAC), normalizes entitlements across the three claim names in precedence order, and
+exercises the full refresh grant cycle.
+
+The source code for the validator is available at
+\url{https://github.com/Canvasflow/oauth-validator}.
+
+\textbf{Why the validator is required.} The validator exercises the \emph{actual}
+browser redirect and the \emph{actual} issued token --- not a simulated version. It
+catches the entire class of \textit{works in jwt.io, fails in production} misconfigurations
+before they affect a real user.
+
+\begin{quote}
+  \textit{Issues such as a claim placed in the ID token instead of the access token, 
+  non-prefixed entitlement values, missing `typ`, or a broken refresh flow are 
+  all detected and flagged by the validator with specific, 
+  actionable error messages.}
+\end{quote}
+
+\subsubsection{Validation Checks}
+
+The tenant's technical lead configures the validator with their IdP settings and MUST
+produce all-green results on all five checks below. A partial pass --- any check showing
+yellow (warning) or red (error) --- is not sufficient for go-live.
+
+\textbf{V1 --- Token Structure.} The validator decodes the issued access token and
+checks:
+\begin{itemize}
+  \item \texttt{typ: "at+jwt"} present in the header (or, for Cognito tenants:
+    \texttt{typ: "JWT"} with \texttt{token\_use: "access"})
+  \item \texttt{kid} present in the header
+  \item \texttt{iss} exactly matches the registered issuer value
+  \item \texttt{aud} contains \texttt{"canvasflow-api"}
+  \item Entitlement claim present under one of the three supported names, as an array
+  \item $\texttt{exp} - \texttt{iat} \leq 3600$~seconds
+\end{itemize}
+
+\textbf{V2 --- Signature Verification.} The validator's server-side component verifies
+the token signature using the tenant's declared signing path (JWKS or HS256). The check
+MUST pass without error.
+
+\textbf{V3 --- Entitlement Normalization and Value Format.} The validator resolves the
+entitlement claim using the three-claim precedence chain and applies the \texttt{cf:}
+prefix filter. It confirms:
+\begin{itemize}
+  \item All expected Canvasflow resource IDs (from the Phase~1 mapping document) are
+    present in the effective entitlement set
+  \item Every value in the resolved claim carries the mandatory \texttt{cf:} prefix
+  \item Any non-prefixed values are flagged as values that will be silently ignored in
+    production (they do not block the check but are highlighted as 
+    probable misconfigurations)
+\end{itemize}
+
+\begin{quote}
+  \textit{A token whose effective entitlement set is empty — because all values 
+  fail the `cf:` filter, or the claim is empty, or the claim is absent — 
+  grants access to free content only. This is the correct baseline behavior 
+  and is not a V3 failure condition, though the validator highlights missing 
+  claims and non-prefixed values as probable misconfigurations the tenant 
+  SHOULD resolve.}
+\end{quote}
+
+\textbf{V4 --- Refresh Flow.} The validator performs a refresh grant using the refresh
+token obtained in V1 and verifies:
+\begin{itemize}
+  \item The refresh grant succeeds (HTTP~200 from the token endpoint)
+  \item The new access token passes V1 and V2 checks
+  \item The new access token carries a freshly evaluated entitlement claim (not copied
+    from the previous token)
+\end{itemize}
+
+\textbf{V5 --- Expiry Behavior.} The validator verifies that:
+\begin{itemize}
+  \item An expired access token produces a 401 response from the Canvasflow GraphQL API
+  \item After the refresh flow, a new valid access token restores API access
+\end{itemize}
+
+\subsubsection{Evidence Submission}
+
+After all five checks pass in the validator, the tenant's technical lead exports or
+screenshots the validator results and submits them to Canvasflow as evidence. Canvasflow
+performs a joint review of the validator evidence.
+
+Only after confirming all five checks are green does Canvasflow set \linebreak
+\texttt{tenant\_config.status = 'active'}. The tenant is notified of production go-live
+upon this status change.
+
+\textbf{No tenant goes live without passing the validator.} The validator gate is
+non-negotiable. It protects both the tenant's users (from a broken integration that
+degrades to a silent authentication failure) and Canvasflow's platform (from improperly
+formatted tokens reaching production).
