@@ -1,10 +1,11 @@
 // app/lib/oauth.ts
-// OAuth 2.0 Authorization Code + PKCE flow — pure client-side.
-// RFC 6749 + RFC 7636. No libraries.
+// OAuth 2.0 Authorization Code + PKCE flow (default) and the deprecated
+// Implicit grant — pure client-side. RFC 6749 + RFC 7636. No libraries.
 
 import { getOAuthConfig } from './config'
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce'
 import { saveAuthRequest, loadAuthRequest, clearAuthRequest, saveTokens, type StoredTokens } from './storage'
+import { decodeJwt } from './jwt'
 
 interface TokenResponse {
   access_token: string
@@ -23,9 +24,33 @@ export async function login(): Promise<void> {
   const config = getOAuthConfig()
   if (!config) throw new Error('OAuth not configured. Click the settings icon to configure your IdP.')
 
+  const state = generateState()
+
+  if (config.flow === 'implicit') {
+    // Implicit grant (RFC 6749 §4.2) — deprecated. Tokens come back directly
+    // in the redirect URI fragment; there is no code exchange and no PKCE.
+    // A nonce is required to bind the returned id_token to this request.
+    const nonce = generateState()
+    saveAuthRequest(state, undefined, nonce)
+
+    const params = new URLSearchParams({
+      response_type: 'id_token token',
+      client_id:     config.clientId,
+      redirect_uri:  config.redirectUri,
+      scope:         config.scope,
+      state,
+      nonce,
+      response_mode: 'fragment',
+    })
+
+    if (config.audience) params.set('audience', config.audience)
+
+    window.location.href = `${config.authorizationEndpoint}?${params.toString()}`
+    return
+  }
+
   const codeVerifier = generateCodeVerifier()
   const codeChallenge = await generateCodeChallenge(codeVerifier)
-  const state = generateState()
 
   saveAuthRequest(state, codeVerifier)
 
@@ -51,6 +76,13 @@ export type CallbackResult =
   | { ok: false; error: string; errorDescription?: string }
 
 export async function handleCallback(): Promise<CallbackResult> {
+  const config = getOAuthConfig()
+  return config?.flow === 'implicit' ? handleImplicitCallback() : handleCodeCallback()
+}
+
+// ── PKCE callback: exchange the authorization code for tokens ─────────────
+
+async function handleCodeCallback(): Promise<CallbackResult> {
   const url              = new URL(window.location.href)
   const code             = url.searchParams.get('code')
   const returnedState    = url.searchParams.get('state')
@@ -84,6 +116,15 @@ export async function handleCallback(): Promise<CallbackResult> {
     }
   }
 
+  if (!saved.codeVerifier) {
+    clearAuthRequest()
+    return {
+      ok: false,
+      error: 'missing_code_verifier',
+      errorDescription: 'No PKCE code verifier found in session. The login flow may have expired or been started in a different tab.',
+    }
+  }
+
   const tokenResult = await exchangeCode(code, saved.codeVerifier)
   clearAuthRequest()
 
@@ -104,6 +145,71 @@ export async function handleCallback(): Promise<CallbackResult> {
   // Remove code + state from the URL without a page reload
   const clean = new URL(window.location.href)
   clean.search = ''
+  window.history.replaceState({}, document.title, clean.pathname)
+
+  return { ok: true }
+}
+
+// ── Implicit callback: tokens arrive directly in the redirect fragment ────
+// Deprecated grant (RFC 6749 §4.2 / RFC 9700). No token endpoint round trip:
+// the IdP puts access_token (and id_token, since we request "id_token token")
+// straight into the URL fragment. We still enforce state (CSRF) and, when an
+// id_token is present, the nonce that binds it to this specific request.
+
+function handleImplicitCallback(): CallbackResult {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+
+  const accessToken      = hashParams.get('access_token')
+  const idToken          = hashParams.get('id_token') ?? undefined
+  const returnedState    = hashParams.get('state')
+  const error            = hashParams.get('error')
+  const errorDescription = hashParams.get('error_description') ?? undefined
+
+  if (error) {
+    clearAuthRequest()
+    return { ok: false, error, errorDescription }
+  }
+
+  if (!accessToken) {
+    return { ok: false, error: 'missing_token', errorDescription: 'No access token in callback URL fragment.' }
+  }
+
+  const saved = loadAuthRequest()
+  if (!saved) {
+    return {
+      ok: false,
+      error: 'missing_state',
+      errorDescription: 'No auth request state found in session. The login flow may have expired or been started in a different tab.',
+    }
+  }
+
+  if (returnedState !== saved.state) {
+    clearAuthRequest()
+    return {
+      ok: false,
+      error: 'state_mismatch',
+      errorDescription: 'State parameter mismatch. Possible CSRF attack or stale session.',
+    }
+  }
+
+  if (idToken && saved.nonce) {
+    const decoded = decodeJwt(idToken)
+    if (decoded?.payload.nonce !== saved.nonce) {
+      clearAuthRequest()
+      return {
+        ok: false,
+        error: 'nonce_mismatch',
+        errorDescription: 'ID token nonce does not match the value sent in the authorization request. Possible token replay.',
+      }
+    }
+  }
+
+  clearAuthRequest()
+  saveTokens({ accessToken, idToken })
+
+  // Remove the fragment from the URL without a page reload
+  const clean = new URL(window.location.href)
+  clean.hash = ''
   window.history.replaceState({}, document.title, clean.pathname)
 
   return { ok: true }

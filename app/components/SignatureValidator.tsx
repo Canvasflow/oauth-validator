@@ -63,7 +63,7 @@ export function SignatureValidator({ accessToken }: Props) {
         <div>
           <h3 className="text-base font-semibold text-ink mb-1">Signature Verification</h3>
           <p className="text-sm text-ink2 leading-relaxed max-w-lg">
-            Cryptographic verification runs on the Cloudflare Worker — it fetches
+            Cryptographic verification runs on the backend — it fetches
             the issuer's public key and verifies the token's signature server-side.
           </p>
         </div>

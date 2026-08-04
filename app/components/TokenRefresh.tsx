@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { refreshTokens } from '../lib/oauth'
 import { decodeJwt, formatExpiry } from '../lib/jwt'
+import { getOAuthConfig } from '../lib/config'
 import type { StoredTokens } from '../lib/storage'
 
 interface Props {
@@ -17,6 +18,7 @@ export function TokenRefresh({ tokens, onRefreshed }: Props) {
   const [newExpiry, setNewExpiry] = useState<number | null>(null)
 
   const hasRefreshToken = !!tokens.refreshToken
+  const isImplicit = getOAuthConfig()?.flow === 'implicit'
 
   const handleRefresh = async () => {
     if (!tokens.refreshToken) return
@@ -71,8 +73,14 @@ export function TokenRefresh({ tokens, onRefreshed }: Props) {
       {!hasRefreshToken && (
         <div className="px-6 py-5">
           <div className="text-sm bg-warn/10 border border-warn/30 text-warn rounded-xl px-4 py-3 leading-relaxed">
-            No refresh token was issued. Your IdP may require the{' '}
-            <code>offline_access</code> scope, or this client may not support refresh tokens.
+            {isImplicit ? (
+              <>The implicit grant does not issue refresh tokens (RFC 6749 §4.2) — this is expected, not an error.</>
+            ) : (
+              <>
+                No refresh token was issued. Your IdP may require the{' '}
+                <code>offline_access</code> scope, or this client may not support refresh tokens.
+              </>
+            )}
           </div>
         </div>
       )}

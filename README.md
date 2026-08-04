@@ -1,6 +1,6 @@
 # Canvasflow OAuth Validator
 
-A browser-based developer tool for testing and inspecting the **OAuth 2.0 Authorization Code + PKCE** flow (RFC 6749 + RFC 7636) against any OIDC-compliant Identity Provider.
+A browser-based developer tool for testing and inspecting OAuth 2.0 flows against any OIDC-compliant Identity Provider. Defaults to **Authorization Code + PKCE** (RFC 6749 + RFC 7636); the deprecated **Implicit** grant (RFC 6749 §4.2) is also available as a toggle in Settings for validating legacy IdP configurations.
 
 Built with **React 18 · Vite 8 · TanStack Router · Hono · Tailwind CSS v4 · TypeScript**, deployed as a **Cloudflare Worker** serving a static SPA. No OAuth libraries — PKCE and JWT handling use the browser's native **Web Crypto API** exclusively.
 
@@ -18,7 +18,7 @@ Before this tool, verifying that a new IdP integration was correct required:
 
 This validator condenses that into a single self-contained URL:
 
-- **Executes the full PKCE flow** so you test the actual browser redirect, not a simulated token
+- **Executes the full PKCE flow** (or, optionally, the deprecated implicit grant) so you test the actual browser redirect, not a simulated token
 - **Decodes and annotates every claim** with Canvasflow-specific context (e.g. flags a wrong `aud`, highlights an empty entitlements array)
 - **Verifies the JWT signature server-side** via a Cloudflare Worker — either by fetching the IdP's public keys from JWKS or by a shared HMAC secret
 - **Normalises entitlements** across the three claim names Canvasflow's pre-token hook may use (`cf:entitlements`, `resources`, `entitlements`)
@@ -146,6 +146,14 @@ On first load, click the **gear icon** (⚙) to open the Settings dialog and fil
 | Redirect URI | Must be registered in your IdP (default: `http://localhost:5173/callback`) |
 | Scope | Space-separated scopes, e.g. `openid profile email` |
 | Audience | Optional — required by Auth0 and some others |
+| Flow | `Authorization Code + PKCE` (default) or `Implicit` (deprecated) |
+
+### Grant type
+
+| Flow | Notes |
+|---|---|
+| **Authorization Code + PKCE** (default) | RFC 6749 + RFC 7636. Tokens are obtained via a server-side code exchange with a `code_verifier`. No tokens ever appear in the URL. Refresh tokens are supported if the IdP issues them. |
+| **Implicit** (deprecated) | RFC 6749 §4.2. Tokens are returned directly in the redirect URL fragment — no code exchange, no PKCE, no refresh token. The OAuth 2.0 Security Best Current Practice (RFC 9700) recommends against this grant; it's included here only to validate legacy IdP configurations still running it. The UI marks it as deprecated wherever it's active. |
 
 ### Token verification settings
 

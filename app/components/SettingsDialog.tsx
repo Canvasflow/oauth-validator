@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, type OAuthConfig, type VerificationMethod } from '../lib/config'
+import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
 
 interface Props {
   onClose: () => void
@@ -13,6 +13,7 @@ const EMPTY_FORM = {
   redirectUri:           typeof window !== 'undefined' ? `${window.location.origin}/callback` : '',
   scope:                 'openid profile email',
   audience:              '',
+  flow:                  'pkce' as AuthFlow,
   verificationMethod:    'jwks' as VerificationMethod,
   jwksUri:               '',
   secret:                '',
@@ -34,6 +35,7 @@ export function SettingsDialog({ onClose }: Props) {
     redirectUri:           existing?.redirectUri           ?? EMPTY_FORM.redirectUri,
     scope:                 existing?.scope                 ?? EMPTY_FORM.scope,
     audience:              existing?.audience              ?? EMPTY_FORM.audience,
+    flow:                  existing?.flow                  ?? EMPTY_FORM.flow,
     verificationMethod:    existing?.verificationMethod    ?? EMPTY_FORM.verificationMethod,
     jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
     secret:                existing?.secret                ?? EMPTY_FORM.secret,
@@ -55,6 +57,9 @@ export function SettingsDialog({ onClose }: Props) {
   const setMethod = (e: React.ChangeEvent<HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, verificationMethod: e.target.value as VerificationMethod }))
 
+  const setFlow = (e: React.ChangeEvent<HTMLSelectElement>) =>
+    setForm(prev => ({ ...prev, flow: e.target.value as AuthFlow }))
+
   const handleSave = () => {
     const config: OAuthConfig = {
       issuer:                form.issuer.trim(),
@@ -64,6 +69,7 @@ export function SettingsDialog({ onClose }: Props) {
       redirectUri:           form.redirectUri.trim(),
       scope:                 form.scope.trim(),
       audience:              form.audience.trim() || undefined,
+      flow:                  form.flow,
       verificationMethod:    form.verificationMethod,
       jwksUri:               form.verificationMethod === 'jwks'   ? (form.jwksUri.trim() || undefined) : undefined,
       secret:                form.verificationMethod === 'secret' ? (form.secret.trim() || undefined)  : undefined,
@@ -81,7 +87,7 @@ export function SettingsDialog({ onClose }: Props) {
   const isValid = !!(
     form.issuer &&
     form.authorizationEndpoint &&
-    form.tokenEndpoint &&
+    (form.flow === 'implicit' || form.tokenEndpoint) &&
     form.clientId &&
     form.redirectUri &&
     form.scope &&
@@ -125,12 +131,52 @@ export function SettingsDialog({ onClose }: Props) {
             <code>localStorage</code> and persist across page refreshes.
           </p>
 
+          {/* Grant Type section */}
+          <div className="flex flex-col gap-3">
+            <SectionLabel>Grant Type</SectionLabel>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-ink2" htmlFor="s-flow">Flow</label>
+              <select
+                className={`cf-select ${inputClass}`}
+                id="s-flow"
+                value={form.flow}
+                onChange={setFlow}
+              >
+                <option value="pkce">Authorization Code + PKCE (recommended)</option>
+                <option value="implicit">Implicit — deprecated</option>
+              </select>
+            </div>
+
+            {form.flow === 'implicit' && (
+              <div
+                className="flex items-start gap-3 bg-warn/10 border border-warn/30 rounded-xl p-4"
+                role="alert"
+              >
+                <span className="text-base leading-relaxed shrink-0 mt-0.5">⚠️</span>
+                <div>
+                  <strong className="block text-sm font-semibold text-warn mb-1">
+                    Implicit grant is deprecated
+                  </strong>
+                  <span className="text-xs text-ink2 leading-relaxed">
+                    The OAuth 2.0 Security Best Current Practice (RFC 9700) recommends against
+                    the implicit grant. Tokens are returned directly in the redirect URL
+                    fragment with no proof-of-possession, and no refresh token is issued. Only
+                    use this to validate a legacy IdP configuration still running it.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* OAuth Provider section */}
           <div className="flex flex-col gap-3">
             <SectionLabel>OAuth Provider</SectionLabel>
             <Field label="Issuer" id="s-issuer" value={form.issuer} onChange={set('issuer')} placeholder="https://your-idp.example.com" />
             <Field label="Authorization endpoint" id="s-auth-ep" value={form.authorizationEndpoint} onChange={set('authorizationEndpoint')} placeholder="https://your-idp.example.com/authorize" />
-            <Field label="Token endpoint" id="s-token-ep" value={form.tokenEndpoint} onChange={set('tokenEndpoint')} placeholder="https://your-idp.example.com/oauth/token" />
+            {form.flow !== 'implicit' && (
+              <Field label="Token endpoint" id="s-token-ep" value={form.tokenEndpoint} onChange={set('tokenEndpoint')} placeholder="https://your-idp.example.com/oauth/token" />
+            )}
             <Field label="Client ID" id="s-client-id" value={form.clientId} onChange={set('clientId')} placeholder="your-client-id" mono />
             <Field label="Redirect URI" id="s-redirect" value={form.redirectUri} onChange={set('redirectUri')} placeholder={`${window.location.origin}/callback`} mono />
             <Field label="Scope" id="s-scope" value={form.scope} onChange={set('scope')} placeholder="openid profile email" mono />
