@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { getRouteApi } from "@tanstack/react-router";
 import { login } from "../lib/oauth";
-import { isConfigured } from "../lib/config";
+import { isConfigured, getOAuthConfig } from "../lib/config";
 import { SettingsDialog } from "./SettingsDialog";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -12,6 +12,7 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [configured, setConfigured] = useState(isConfigured);
+  const [flow, setFlow] = useState(() => getOAuthConfig()?.flow ?? "pkce");
 
   const handleLogin = async () => {
     setLoading(true);
@@ -26,6 +27,7 @@ export function LoginScreen() {
   const handleSettingsClose = () => {
     setShowSettings(false);
     setConfigured(isConfigured());
+    setFlow(getOAuthConfig()?.flow ?? "pkce");
   };
 
   return (
@@ -66,11 +68,43 @@ export function LoginScreen() {
               Sign in
             </h1>
             <p className="text-sm text-ink2 leading-relaxed">
-              Authorization Code flow with PKCE (S256).
-              <br />
-              Validation with Web Crypto only.
+              {flow === "implicit" ? (
+                <>
+                  Implicit grant (deprecated).
+                  <br />
+                  Tokens returned directly in the redirect fragment.
+                </>
+              ) : (
+                <>
+                  Authorization Code flow with PKCE (S256).
+                  <br />
+                  Validation with Web Crypto only.
+                </>
+              )}
             </p>
           </div>
+
+          {/* Deprecated flow warning */}
+          {configured && flow === "implicit" && (
+            <div
+              className="flex items-start gap-3 bg-warn/10 border border-warn/30 rounded-xl p-4"
+              role="alert"
+            >
+              <span className="text-base leading-relaxed shrink-0 mt-0.5">
+                ⚠️
+              </span>
+              <div>
+                <strong className="block text-sm font-semibold text-warn mb-1">
+                  Implicit flow is deprecated
+                </strong>
+                <span className="text-xs text-ink2 leading-relaxed">
+                  This IdP is configured to use the deprecated implicit
+                  grant. Switch to Authorization Code + PKCE in Settings
+                  unless you're specifically validating legacy behavior.
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Not configured warning */}
           {!configured && (

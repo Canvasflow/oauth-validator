@@ -14,30 +14,40 @@ const KEYS = {
   REFRESH_TOKEN: 'pkce.refresh_token',
   CODE_VERIFIER: 'pkce.code_verifier',
   STATE:         'pkce.state',
+  NONCE:         'pkce.nonce',
 } as const
 
 const isClient = () => typeof window !== 'undefined'
 
 // ── Pre-auth ephemeral values ─────────────────────────────────────────────
+// codeVerifier is only set for the PKCE flow; nonce is only set for the
+// implicit flow (used to bind the returned id_token to this request).
 
-export function saveAuthRequest(state: string, codeVerifier: string): void {
+export function saveAuthRequest(state: string, codeVerifier?: string, nonce?: string): void {
   if (!isClient()) return
   sessionStorage.setItem(KEYS.STATE, state)
-  sessionStorage.setItem(KEYS.CODE_VERIFIER, codeVerifier)
+  if (codeVerifier) sessionStorage.setItem(KEYS.CODE_VERIFIER, codeVerifier)
+  else sessionStorage.removeItem(KEYS.CODE_VERIFIER)
+  if (nonce) sessionStorage.setItem(KEYS.NONCE, nonce)
+  else sessionStorage.removeItem(KEYS.NONCE)
 }
 
-export function loadAuthRequest(): { state: string; codeVerifier: string } | null {
+export function loadAuthRequest(): { state: string; codeVerifier?: string; nonce?: string } | null {
   if (!isClient()) return null
-  const state        = sessionStorage.getItem(KEYS.STATE)
-  const codeVerifier = sessionStorage.getItem(KEYS.CODE_VERIFIER)
-  if (!state || !codeVerifier) return null
-  return { state, codeVerifier }
+  const state = sessionStorage.getItem(KEYS.STATE)
+  if (!state) return null
+  return {
+    state,
+    codeVerifier: sessionStorage.getItem(KEYS.CODE_VERIFIER) ?? undefined,
+    nonce:        sessionStorage.getItem(KEYS.NONCE)         ?? undefined,
+  }
 }
 
 export function clearAuthRequest(): void {
   if (!isClient()) return
   sessionStorage.removeItem(KEYS.STATE)
   sessionStorage.removeItem(KEYS.CODE_VERIFIER)
+  sessionStorage.removeItem(KEYS.NONCE)
 }
 
 // ── Post-auth tokens ──────────────────────────────────────────────────────
