@@ -144,6 +144,7 @@ vite.config.ts.timestamp-*
 
 # TanStack Router (auto-generated, rebuilt on each dev/build run)
 app/routeTree.gen.ts
+.tanstack/
 
 # Vite + Cloudflare build output
 dist/
