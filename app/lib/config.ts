@@ -50,7 +50,7 @@ export function isConfigured(): boolean {
   return !!(
     cfg.issuer &&
     cfg.authorizationEndpoint &&
-    cfg.tokenEndpoint &&
+    (cfg.flow === 'implicit' || cfg.tokenEndpoint) &&
     cfg.clientId &&
     cfg.redirectUri &&
     cfg.scope

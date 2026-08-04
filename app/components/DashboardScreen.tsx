@@ -94,8 +94,7 @@ export function DashboardScreen() {
               The access token is stored
               in <code>sessionStorage</code>. Decoded claims are shown below —
               client-side decode only. Use the Signature Verification panel to
-              cryptographically confirm the token via the Cloudflare Worker
-              backend.
+              cryptographically confirm the token via the backend.
             </p>
           </div>
 

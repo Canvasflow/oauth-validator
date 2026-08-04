@@ -87,7 +87,7 @@ export function SettingsDialog({ onClose }: Props) {
   const isValid = !!(
     form.issuer &&
     form.authorizationEndpoint &&
-    form.tokenEndpoint &&
+    (form.flow === 'implicit' || form.tokenEndpoint) &&
     form.clientId &&
     form.redirectUri &&
     form.scope &&
@@ -174,7 +174,9 @@ export function SettingsDialog({ onClose }: Props) {
             <SectionLabel>OAuth Provider</SectionLabel>
             <Field label="Issuer" id="s-issuer" value={form.issuer} onChange={set('issuer')} placeholder="https://your-idp.example.com" />
             <Field label="Authorization endpoint" id="s-auth-ep" value={form.authorizationEndpoint} onChange={set('authorizationEndpoint')} placeholder="https://your-idp.example.com/authorize" />
-            <Field label="Token endpoint" id="s-token-ep" value={form.tokenEndpoint} onChange={set('tokenEndpoint')} placeholder="https://your-idp.example.com/oauth/token" />
+            {form.flow !== 'implicit' && (
+              <Field label="Token endpoint" id="s-token-ep" value={form.tokenEndpoint} onChange={set('tokenEndpoint')} placeholder="https://your-idp.example.com/oauth/token" />
+            )}
             <Field label="Client ID" id="s-client-id" value={form.clientId} onChange={set('clientId')} placeholder="your-client-id" mono />
             <Field label="Redirect URI" id="s-redirect" value={form.redirectUri} onChange={set('redirectUri')} placeholder={`${window.location.origin}/callback`} mono />
             <Field label="Scope" id="s-scope" value={form.scope} onChange={set('scope')} placeholder="openid profile email" mono />
