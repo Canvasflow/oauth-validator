@@ -6,6 +6,12 @@ const STORAGE_KEY = 'oauth_config'
 
 export type VerificationMethod = 'jwks' | 'secret'
 
+// 'pkce' (default) — Authorization Code + PKCE, RFC 6749 + RFC 7636.
+// 'implicit' — Implicit grant, RFC 6749 §4.2. Deprecated by the OAuth 2.0
+// Security Best Current Practice (RFC 9700); kept here only so this tool can
+// validate legacy IdP configurations still running it.
+export type AuthFlow = 'pkce' | 'implicit'
+
 export interface OAuthConfig {
   issuer: string
   authorizationEndpoint: string
@@ -14,6 +20,7 @@ export interface OAuthConfig {
   redirectUri: string
   scope: string
   audience?: string
+  flow: AuthFlow
   verificationMethod: VerificationMethod
   jwksUri?: string
   secret?: string

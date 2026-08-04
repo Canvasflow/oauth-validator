@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { clearAll, loadTokens, type StoredTokens } from "../lib/storage";
+import { getOAuthConfig } from "../lib/config";
 import { TokenInspector } from "./TokenInspector";
 import { SignatureValidator } from "./SignatureValidator";
 import { TokenRefresh } from "./TokenRefresh";
@@ -11,6 +12,7 @@ export function DashboardScreen() {
   const navigate = useNavigate();
   const [tokens, setTokens] = useState<StoredTokens>(() => loadTokens()!);
   const [showSettings, setShowSettings] = useState(false);
+  const flow = getOAuthConfig()?.flow ?? "pkce";
 
   const handleLogout = () => {
     clearAll();
@@ -50,6 +52,15 @@ export function DashboardScreen() {
               Authenticated
             </div>
 
+            {flow === "implicit" && (
+              <div
+                className="hidden sm:flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full bg-warn/10 text-warn border border-warn/25"
+                title="Implicit grant — deprecated (RFC 9700)"
+              >
+                Implicit (deprecated)
+              </div>
+            )}
+
             <ThemeToggle />
 
             <button
@@ -77,7 +88,10 @@ export function DashboardScreen() {
               Token Inspector
             </h2>
             <p className="text-sm text-ink2 leading-relaxed">
-              The PKCE flow completed successfully. The access token is stored
+              {flow === "implicit"
+                ? "The implicit flow completed successfully (deprecated — tokens were returned directly in the redirect URL fragment, with no code exchange)."
+                : "The PKCE flow completed successfully."}{" "}
+              The access token is stored
               in <code>sessionStorage</code>. Decoded claims are shown below —
               client-side decode only. Use the Signature Verification panel to
               cryptographically confirm the token via the Cloudflare Worker
