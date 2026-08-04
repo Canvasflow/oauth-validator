@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { decodeJwt, extractEntitlements, formatExpiry, isExpired } from '../lib/jwt'
+import { getOAuthConfig } from '../lib/config'
 import { ClaimRow } from './ClaimRow'
 import type { StoredTokens } from '../lib/storage'
 
@@ -18,6 +19,9 @@ export function TokenInspector({ tokens }: Props) {
 
   const accessDecoded = decodeJwt(tokens.accessToken)
   const idDecoded = tokens.idToken ? decodeJwt(tokens.idToken) : null
+
+  const config = getOAuthConfig()
+  const showSecret = config?.verificationMethod === 'secret' && !!config.secret
 
   const handleCopy = async (text: string, label: string) => {
     await navigator.clipboard.writeText(text)
@@ -116,6 +120,16 @@ export function TokenInspector({ tokens }: Props) {
           {tokens.refreshToken && (
             <RawToken label="Refresh Token (client-side only — never send to API)" token={tokens.refreshToken} onCopy={() => handleCopy(tokens.refreshToken!, 'refresh')} copied={copied === 'refresh'} />
           )}
+          {showSecret && (
+            <>
+              <RawSecret label="Shared Secret (HMAC — used for signature verification)" secret={config!.secret!} onCopy={() => handleCopy(config!.secret!, 'secret')} copied={copied === 'secret'} />
+              <Note variant="info">
+                You can independently validate this token's signature at{' '}
+                <a href="https://jwt.io" target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">jwt.io</a>
+                : paste the access token in the Encoded panel, then paste the shared secret above into the "your-256-bit-secret" field under Verify Signature.
+              </Note>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -172,6 +186,31 @@ function RawToken({ label, token, onCopy, copied }: { label: string; token: stri
         </button>
       </div>
       <pre className="token-raw">{token}</pre>
+    </div>
+  )
+}
+
+function RawSecret({ label, secret, onCopy, copied }: { label: string; secret: string; onCopy: () => void; copied: boolean }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[0.8rem] font-mono text-ink2">{label}</span>
+        <button
+          className="text-xs font-medium px-2.5 py-1 rounded-lg text-ink2 border border-rim2 hover:bg-panel hover:text-ink transition-colors"
+          onClick={onCopy}
+        >
+          {copied ? '✓ Copied' : 'Copy'}
+        </button>
+      </div>
+      <input
+        type="password"
+        readOnly
+        value={secret}
+        spellCheck={false}
+        autoComplete="off"
+        className="token-raw w-full focus:outline-none"
+        onFocus={(e) => e.target.select()}
+      />
     </div>
   )
 }
