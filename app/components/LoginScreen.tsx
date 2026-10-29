@@ -4,7 +4,6 @@ import { login } from "../lib/oauth";
 import { isConfigured, getOAuthConfig } from "../lib/config";
 import { SettingsDialog } from "./SettingsDialog";
 import { ThemeToggle } from "./ThemeToggle";
-import { SpecDownload } from "./SpecDownload";
 
 const routeApi = getRouteApi("/login");
 
@@ -168,9 +167,19 @@ export function LoginScreen() {
               the tab closes. IdP settings are saved in{" "}
               <code>localStorage</code>.
             </p>
-            <div className="flex justify-center mt-3">
-              <SpecDownload icon />
-            </div>
+            {__SPEC_PDF__ && (
+              <p className="text-xs text-ink3 text-center leading-relaxed mt-2">
+                Checks follow the{" "}
+                <a
+                  href={__SPEC_PDF__}
+                  download
+                  className="underline underline-offset-2 hover:text-ink"
+                >
+                  Canvasflow Tenant Integration Specification v{__SPEC_VERSION__}
+                </a>{" "}
+                (PDF).
+              </p>
+            )}
           </div>
         </div>
       </div>
