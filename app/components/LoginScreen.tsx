@@ -53,7 +53,6 @@ export function LoginScreen() {
                 </span>
               </div>
               <div className="flex items-center gap-1">
-                <SpecDownload icon />
                 <ThemeToggle />
                 <button
                   className="p-1.5 rounded-lg text-ink2 hover:text-ink hover:bg-panel transition-colors cursor-pointer"
@@ -169,6 +168,9 @@ export function LoginScreen() {
               the tab closes. IdP settings are saved in{" "}
               <code>localStorage</code>.
             </p>
+            <div className="flex justify-center mt-3">
+              <SpecDownload icon />
+            </div>
           </div>
         </div>
       </div>
