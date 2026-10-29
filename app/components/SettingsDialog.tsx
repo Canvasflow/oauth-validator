@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, DEFAULT_AUDIENCE, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
+import { SpecDownload } from './SpecDownload'
 
 interface Props {
   onClose: () => void
@@ -268,6 +269,17 @@ export function SettingsDialog({ onClose }: Props) {
             <Field label="GraphQL URL (V5, optional)" id="s-graphql" value={form.graphqlUrl} onChange={set('graphqlUrl')} placeholder="https://api.example.com/graphql" mono />
             <Field label="PWA app-key (V5, optional)" id="s-app-key" value={form.appKey} onChange={set('appKey')} placeholder="the PWA's app-key" mono />
           </div>
+
+          {/* Specification section (hidden when the build has no PDF) */}
+          {__SPEC_PDF__ && (
+            <div className="flex flex-col gap-3">
+              <SectionLabel>Specification</SectionLabel>
+              <p className="text-sm text-ink2 leading-relaxed">
+                The Canvasflow Tenant Integration Specification (CF-OAUTH) these checks follow.
+              </p>
+              <SpecDownload />
+            </div>
+          )}
         </div>
 
         {/* Footer */}

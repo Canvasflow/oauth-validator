@@ -64,7 +64,7 @@ export function DashboardScreen() {
               </div>
             )}
 
-            <SpecDownload compact />
+            <SpecDownload icon />
 
             <ThemeToggle />
 
