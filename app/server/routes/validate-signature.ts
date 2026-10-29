@@ -54,11 +54,12 @@ export async function handleValidateSignature(c: Context) {
 
   // ── Shared secret path ────────────────────────────────────────────────────
   if (verificationMethod === 'secret') {
-    if (!secret || typeof secret !== 'string' || !secret.trim()) {
+    if (!secret || typeof secret !== 'string') {
       return c.json({ valid: false, error: 'verificationMethod is "secret" but no secret was provided' }, 400)
     }
 
-    const result = await verifyJwtWithSecret(token, secret.trim())
+    // Not trimmed: the exact UTF-8 bytes are the HMAC key (CF-OAUTH §5.2.2).
+    const result = await verifyJwtWithSecret(token, secret)
     if (!result.valid) {
       return c.json({
         valid: false,

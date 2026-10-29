@@ -18,10 +18,14 @@ export function extractEntitlements(payload: Record<string, unknown>): Entitleme
     ['entitlements',    'entitlements'],
   ]
 
+  // The first claim *present* wins (CF-OAUTH §4.3), even if it is not an
+  // array: Canvasflow then rejects the token instead of falling through.
   for (const [claim, source] of candidates) {
     const val = payload[claim]
-    if (Array.isArray(val)) {
-      return { entitlements: val.filter((v) => typeof v === 'string') as string[], source }
+    if (val === undefined) continue
+    return {
+      entitlements: Array.isArray(val) ? (val.filter((v) => typeof v === 'string') as string[]) : [],
+      source,
     }
   }
 

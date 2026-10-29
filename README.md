@@ -71,10 +71,14 @@ oauth-validator/
 │   │   ├── ClaimRow.tsx            # Single claim display row (supports pills)
 │   │   ├── SignatureValidator.tsx  # Calls Worker to verify JWT signature
 │   │   ├── TokenRefresh.tsx        # Exchanges refresh token for new tokens
+│   │   ├── CanvasflowChecks.tsx    # V1–V3 checks as the Canvasflow API applies them
+│   │   ├── ApiProbe.tsx            # V5: calls the Canvasflow GraphQL API with the token
+│   │   ├── SpecDownload.tsx        # Header link to the spec PDF
 │   │   ├── SettingsDialog.tsx      # <dialog> for configuring the IdP
 │   │   └── ThemeToggle.tsx         # Light / dark mode toggle
 │   ├── lib/
 │   │   ├── config.ts               # OAuthConfig type; localStorage read/write
+│   │   ├── canvasflow-checks.ts    # Pure CF-OAUTH v1.1.0 token checks
 │   │   ├── oauth.ts                # login(), handleCallback(), refreshTokens()
 │   │   ├── pkce.ts                 # code_verifier / code_challenge (Web Crypto)
 │   │   ├── storage.ts              # sessionStorage wrappers for token objects
@@ -160,7 +164,28 @@ On first load, click the **gear icon** (⚙) to open the Settings dialog and fil
 | Mode | When to use |
 |---|---|
 | **JWKS** (default) | IdP publishes a JWKS endpoint. The Worker fetches the public key and verifies the signature. Optionally override the JWKS URI if auto-discovery is not available. |
-| **Shared secret** | IdP uses HMAC (HS256/HS384/HS512). Enter the shared secret — it is sent to the Worker in the verification request and never stored server-side. |
+| **Shared secret** | IdP uses HMAC. Canvasflow accepts **HS256** only. Enter the shared secret exactly as the tenant configured it: its UTF-8 bytes are the HMAC key (no base64/hex decoding, no trimming) and it must be at least 32 bytes (CF-OAUTH v1.1.0 §5.2.2). It is sent to the Worker in the verification request and never stored server-side. |
+
+### Canvasflow Resource Server settings
+
+| Setting | Purpose |
+|---|---|
+| **Expected aud** | Value the access token's `aud` must contain. Default `canvasflow-api`; AWS Cognito tenants use their app client id. |
+| **AWS Cognito mode** | `typ_strict = false`: accept `typ` `JWT` or absent, and require `token_use` `access`. |
+| **GraphQL URL / app-key** | Optional. Enables the V5 API check against a Canvasflow environment and PWA. |
+
+### Validation checks (go-live gate)
+
+After sign-in the dashboard shows the CF-OAUTH checks the Canvasflow API applies:
+
+- **Canvasflow Checks** — V1 token structure (`typ`, `alg` per signing path, `kid`, exact `iss`, `aud`, `sub`, `jti`, `iat`/`exp`, lifetime ≤ 3600 s, entitlement claim), V2 secret rules (HS256), V3 entitlements (precedence `cf:entitlements` > `resources` > `entitlements`, `cf:` filter, effective `cf:issue` ids).
+- **Signature Verification** — V2, server-side (JWKS or HMAC).
+- **Token Refresh** — V4.
+- **V5 — API Expiry Check** — calls the GraphQL API with the current access token; passes once an expired token got `INVALID_TOKEN` and the refreshed token got data.
+
+### Specification PDF
+
+The header has a **Spec** button that downloads the Canvasflow Tenant Integration Specification PDF, built from `docs/spec` (version in `docs/spec/version.tex`). Build it locally with `make -C docs pdf` (TeX Live + latexmk) or `make -C docs pdf-tectonic` (`brew install tectonic`); `npm run build` then bundles `docs/build/canvasflow-tenant-spec-v<version>.pdf`. Without a built PDF the button is hidden.
 
 ---
 
@@ -204,6 +229,7 @@ npm run deploy     # Equivalent to: npm run build && wrangler deploy
 ```
 push → main or develop
   └─ npm install
+  └─ make -C docs pdf   (TeX Live; spec PDF bundled into the app)
   └─ npm run build
   └─ wrangler deploy  (using CLOUDFLARE_API_TOKEN secret)
 ```
@@ -221,7 +247,7 @@ Set `Audience` to your API identifier (e.g. `canvasflow-api`). Register the app 
 Use the authorization server issuer URL (not the org URL). Set grant type to `Authorization Code`. Enable PKCE in the app settings. Leave the client secret blank.
 
 **AWS Cognito**
-Create an App Client with **no client secret**. Enable `Authorization code grant`. Add the callback URL to **Allowed callback URLs**. The scope `openid` is required; `profile` and `email` are optional.
+Create an App Client with **no client secret**. Enable `Authorization code grant`. Add the callback URL to **Allowed callback URLs**. The scope `openid` is required; `profile` and `email` are optional. For Canvasflow, enable **AWS Cognito mode** in Settings and set **Expected aud** to the app client id; access-token customization (Pre Token Generation V2_0) needs the Essentials or Plus plan.
 
 **Azure AD / Entra ID**
 Register as a **Single-page application** (the SPA registration type enables PKCE automatically and disables the client secret). Add the callback URL to **Redirect URIs** under the SPA platform.

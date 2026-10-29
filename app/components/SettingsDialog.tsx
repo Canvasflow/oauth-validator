@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
+import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, DEFAULT_AUDIENCE, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
 
 interface Props {
   onClose: () => void
@@ -17,6 +17,10 @@ const EMPTY_FORM = {
   verificationMethod:    'jwks' as VerificationMethod,
   jwksUri:               '',
   secret:                '',
+  expectedAudience:      '',
+  cognitoMode:           false,
+  graphqlUrl:            '',
+  appKey:                '',
 }
 
 const inputClass = 'w-full bg-canvas border border-rim text-ink text-sm rounded-lg px-3 py-2 placeholder:text-ink3 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-colors'
@@ -39,6 +43,10 @@ export function SettingsDialog({ onClose }: Props) {
     verificationMethod:    existing?.verificationMethod    ?? EMPTY_FORM.verificationMethod,
     jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
     secret:                existing?.secret                ?? EMPTY_FORM.secret,
+    expectedAudience:      existing?.expectedAudience      ?? EMPTY_FORM.expectedAudience,
+    cognitoMode:           existing?.cognitoMode           ?? EMPTY_FORM.cognitoMode,
+    graphqlUrl:            existing?.graphqlUrl            ?? EMPTY_FORM.graphqlUrl,
+    appKey:                existing?.appKey                ?? EMPTY_FORM.appKey,
   })
 
   useEffect(() => {
@@ -50,7 +58,7 @@ export function SettingsDialog({ onClose }: Props) {
     return () => el.removeEventListener('close', handleNativeClose)
   }, [onClose])
 
-  const set = (key: keyof typeof form) =>
+  const set = (key: Exclude<keyof typeof form, 'cognitoMode'>) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
 
@@ -72,7 +80,12 @@ export function SettingsDialog({ onClose }: Props) {
       flow:                  form.flow,
       verificationMethod:    form.verificationMethod,
       jwksUri:               form.verificationMethod === 'jwks'   ? (form.jwksUri.trim() || undefined) : undefined,
-      secret:                form.verificationMethod === 'secret' ? (form.secret.trim() || undefined)  : undefined,
+      // Not trimmed: the secret's exact UTF-8 bytes are the HMAC key (CF-OAUTH §5.2.2).
+      secret:                form.verificationMethod === 'secret' ? (form.secret || undefined)  : undefined,
+      expectedAudience:      form.expectedAudience.trim() || undefined,
+      cognitoMode:           form.cognitoMode || undefined,
+      graphqlUrl:            form.graphqlUrl.trim() || undefined,
+      appKey:                form.appKey.trim() || undefined,
     }
     saveOAuthConfig(config)
     dialogRef.current?.close()
@@ -91,7 +104,7 @@ export function SettingsDialog({ onClose }: Props) {
     form.clientId &&
     form.redirectUri &&
     form.scope &&
-    (form.verificationMethod === 'jwks' || form.secret.trim())
+    (form.verificationMethod === 'jwks' || form.secret)
   )
 
   return (
@@ -229,9 +242,31 @@ export function SettingsDialog({ onClose }: Props) {
                 </div>
                 <p className="text-xs text-ink3 leading-relaxed">
                   Stored in <code>localStorage</code>. Only use in dev / test environments.
+                  Used exactly as typed: its UTF-8 bytes are the HMAC key (at least 32 bytes).
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Canvasflow Resource Server section */}
+          <div className="flex flex-col gap-3">
+            <SectionLabel>Canvasflow Resource Server</SectionLabel>
+            <Field label="Expected aud" id="s-expected-aud" value={form.expectedAudience} onChange={set('expectedAudience')} placeholder={`${DEFAULT_AUDIENCE} (Cognito: your app client id)`} mono />
+            <label className="flex items-start gap-2.5 text-sm text-ink2 cursor-pointer" htmlFor="s-cognito">
+              <input
+                id="s-cognito"
+                type="checkbox"
+                className="mt-0.5"
+                checked={form.cognitoMode}
+                onChange={(e) => setForm(prev => ({ ...prev, cognitoMode: e.target.checked }))}
+              />
+              <span>
+                AWS Cognito mode (<code>typ_strict = false</code>): accept <code>typ</code> "JWT" or
+                absent, and require <code>token_use</code> "access".
+              </span>
+            </label>
+            <Field label="GraphQL URL (V5, optional)" id="s-graphql" value={form.graphqlUrl} onChange={set('graphqlUrl')} placeholder="https://api.example.com/graphql" mono />
+            <Field label="PWA app-key (V5, optional)" id="s-app-key" value={form.appKey} onChange={set('appKey')} placeholder="the PWA's app-key" mono />
           </div>
         </div>
 

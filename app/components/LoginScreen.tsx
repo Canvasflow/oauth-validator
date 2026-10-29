@@ -4,6 +4,7 @@ import { login } from "../lib/oauth";
 import { isConfigured, getOAuthConfig } from "../lib/config";
 import { SettingsDialog } from "./SettingsDialog";
 import { ThemeToggle } from "./ThemeToggle";
+import { SpecDownload } from "./SpecDownload";
 
 const routeApi = getRouteApi("/login");
 
@@ -52,6 +53,7 @@ export function LoginScreen() {
                 </span>
               </div>
               <div className="flex items-center gap-1">
+                <SpecDownload compact />
                 <ThemeToggle />
                 <button
                   className="p-1.5 rounded-lg text-ink2 hover:text-ink hover:bg-panel transition-colors cursor-pointer"

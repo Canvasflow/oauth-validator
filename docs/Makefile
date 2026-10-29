@@ -2,9 +2,10 @@
 SPEC_DIR  := spec
 BUILD_DIR := build
 
-SPEC_VERSION := $(shell grep -oP '\\\\newcommand\{\\\\specversion\}\{\K[^}]+' $(SPEC_DIR)/version.tex)
+# Portable (BSD and GNU sed); CI may still pass SPEC_VERSION explicitly.
+SPEC_VERSION ?= $(shell sed -n 's/.*\\newcommand{\\specversion}{\([^}]*\)}.*/\1/p' $(SPEC_DIR)/version.tex)
 
-.PHONY: all pdf clean version-check
+.PHONY: all pdf pdf-tectonic clean version-check
 
 all: pdf
 
@@ -13,6 +14,13 @@ pdf:
 	latexmk -pdf -interaction=nonstopmode -halt-on-error \
 	  -output-directory=$(abspath $(BUILD_DIR)) \
 	  -cd $(SPEC_DIR)/main.tex
+	cp $(BUILD_DIR)/main.pdf \
+	  $(BUILD_DIR)/canvasflow-tenant-spec-v$(SPEC_VERSION).pdf
+
+# Local alternative to TeX Live: `brew install tectonic`, then `make pdf-tectonic`.
+pdf-tectonic:
+	mkdir -p $(BUILD_DIR)
+	cd $(SPEC_DIR) && tectonic -X compile main.tex --outdir $(abspath $(BUILD_DIR))
 	cp $(BUILD_DIR)/main.pdf \
 	  $(BUILD_DIR)/canvasflow-tenant-spec-v$(SPEC_VERSION).pdf
 

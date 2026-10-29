@@ -23,7 +23,25 @@ export interface OAuthConfig {
   flow: AuthFlow
   verificationMethod: VerificationMethod
   jwksUri?: string
+  // HS256 shared secret, used exactly as typed: its UTF-8 bytes are the HMAC
+  // key (CF-OAUTH v1.1.0 §5.2.2). Never trimmed.
   secret?: string
+  // ── Canvasflow Resource Server expectations (CF-OAUTH v1.1.0) ──
+  // Value that must be present in the access token's `aud`. Defaults to
+  // canvasflow-api; AWS Cognito tenants register their app client id.
+  expectedAudience?: string
+  // Cognito accommodation (typ_strict = false): typ may be "JWT" or absent,
+  // and token_use must be "access".
+  cognitoMode?: boolean
+  // V5 — the Canvasflow GraphQL endpoint and the PWA's app-key to probe.
+  graphqlUrl?: string
+  appKey?: string
+}
+
+export const DEFAULT_AUDIENCE = 'canvasflow-api'
+
+export function getExpectedAudience(cfg: OAuthConfig | null): string {
+  return cfg?.expectedAudience?.trim() || DEFAULT_AUDIENCE
 }
 
 export function getOAuthConfig(): OAuthConfig | null {
