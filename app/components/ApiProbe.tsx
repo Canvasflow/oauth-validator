@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { decodeJwt, isExpired } from '../lib/jwt'
 import { getOAuthConfig } from '../lib/config'
 
-// V5 — Expiry behavior (CF-OAUTH v1.1.0 §9.4): an expired access token sent to
+// V5 — Expiry behavior (CF-OAUTH §9.4): an expired access token sent to
 // the Canvasflow GraphQL API gets the generic INVALID_TOKEN error, and the
 // refreshed token restores access. The browser calls the API directly: only
 // the access token is sent, never the ID or refresh token (§8.5).

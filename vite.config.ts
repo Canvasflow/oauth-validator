@@ -11,7 +11,8 @@ import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 // built PDF the app gets __SPEC_PDF__ = null and hides the download link.
 function specPdf(): Plugin {
   const versionTex = readFileSync('docs/spec/version.tex', 'utf8')
-  const version = /\\newcommand\{\\specversion\}\{([^}]+)\}/.exec(versionTex)?.[1] ?? 'unknown'
+  const version = /\\newcommand\{\\specversion\}\{([^}]+)\}/.exec(versionTex)?.[1]
+  if (!version) throw new Error('docs/spec/version.tex does not define \\specversion')
   const fileName = `canvasflow-tenant-spec-v${version}.pdf`
   const source = `docs/build/${fileName}`
   const available = existsSync(source)

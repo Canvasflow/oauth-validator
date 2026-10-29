@@ -24,9 +24,9 @@ export interface OAuthConfig {
   verificationMethod: VerificationMethod
   jwksUri?: string
   // HS256 shared secret, used exactly as typed: its UTF-8 bytes are the HMAC
-  // key (CF-OAUTH v1.1.0 §5.2.2). Never trimmed.
+  // key (CF-OAUTH §5.2.2). Never trimmed.
   secret?: string
-  // ── Canvasflow Resource Server expectations (CF-OAUTH v1.1.0) ──
+  // ── Canvasflow Resource Server expectations (CF-OAUTH) ──
   // Value that must be present in the access token's `aud`. Defaults to
   // canvasflow-api; AWS Cognito tenants register their app client id.
   expectedAudience?: string

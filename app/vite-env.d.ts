@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
 
-// Injected by specPdf() in vite.config.ts.
+// Injected by specPdf() in vite.config.ts. Read them through app/lib/spec.ts.
 declare const __SPEC_VERSION__: string
 declare const __SPEC_PDF__: string | null

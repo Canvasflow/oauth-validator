@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, DEFAULT_AUDIENCE, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
 import { SpecDownload } from './SpecDownload'
+import { SPEC_PDF } from '../lib/spec'
 
 interface Props {
   onClose: () => void
@@ -271,7 +272,7 @@ export function SettingsDialog({ onClose }: Props) {
           </div>
 
           {/* Specification section (hidden when the build has no PDF) */}
-          {__SPEC_PDF__ && (
+          {SPEC_PDF && (
             <div className="flex flex-col gap-3">
               <SectionLabel>Specification</SectionLabel>
               <p className="text-sm text-ink2 leading-relaxed">

@@ -1,6 +1,7 @@
 import { decodeJwt } from '../lib/jwt'
 import { getOAuthConfig } from '../lib/config'
 import { runCanvasflowChecks, summarize, type Check, type CheckStatus } from '../lib/canvasflow-checks'
+import { SPEC_VERSION } from '../lib/spec'
 
 interface Props {
   accessToken: string
@@ -33,7 +34,7 @@ export function CanvasflowChecks({ accessToken }: Props) {
         <div>
           <h3 className="text-base font-semibold text-ink mb-1">Canvasflow Checks</h3>
           <p className="text-sm text-ink2 leading-relaxed max-w-lg">
-            How the Canvasflow API will judge this access token (CF-OAUTH v{__SPEC_VERSION__}).
+            How the Canvasflow API will judge this access token (CF-OAUTH v{SPEC_VERSION}).
             Go-live needs every check green.
           </p>
         </div>

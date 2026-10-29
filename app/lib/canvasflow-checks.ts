@@ -1,7 +1,7 @@
 // app/lib/canvasflow-checks.ts
 // ---------------------------------------------------------------------------
 // The checks the Canvasflow Resource Server applies to a tenant access token
-// (CF-OAUTH v1.1.0), run client-side on the decoded token so the validator
+// (CF-OAUTH), run client-side on the decoded token so the validator
 // shows V1 and V3 exactly as the API will judge them. Pure: no I/O. The
 // signature itself (V2) is verified server-side (/api/validate/signature).
 // ---------------------------------------------------------------------------

@@ -78,7 +78,7 @@ oauth-validator/
 │   │   └── ThemeToggle.tsx         # Light / dark mode toggle
 │   ├── lib/
 │   │   ├── config.ts               # OAuthConfig type; localStorage read/write
-│   │   ├── canvasflow-checks.ts    # Pure CF-OAUTH v1.1.0 token checks
+│   │   ├── canvasflow-checks.ts    # Pure CF-OAUTH token checks
 │   │   ├── oauth.ts                # login(), handleCallback(), refreshTokens()
 │   │   ├── pkce.ts                 # code_verifier / code_challenge (Web Crypto)
 │   │   ├── storage.ts              # sessionStorage wrappers for token objects
@@ -164,7 +164,7 @@ On first load, click the **gear icon** (⚙) to open the Settings dialog and fil
 | Mode | When to use |
 |---|---|
 | **JWKS** (default) | IdP publishes a JWKS endpoint. The Worker fetches the public key and verifies the signature. Optionally override the JWKS URI if auto-discovery is not available. |
-| **Shared secret** | IdP uses HMAC. Canvasflow accepts **HS256** only. Enter the shared secret exactly as the tenant configured it: its UTF-8 bytes are the HMAC key (no base64/hex decoding, no trimming) and it must be at least 32 bytes (CF-OAUTH v1.1.0 §5.2.2). It is sent to the Worker in the verification request and never stored server-side. |
+| **Shared secret** | IdP uses HMAC. Canvasflow accepts **HS256** only. Enter the shared secret exactly as the tenant configured it: its UTF-8 bytes are the HMAC key (no base64/hex decoding, no trimming) and it must be at least 32 bytes (CF-OAUTH §5.2.2). It is sent to the Worker in the verification request and never stored server-side. |
 
 ### Canvasflow Resource Server settings
 

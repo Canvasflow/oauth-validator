@@ -1,13 +1,15 @@
+import { SPEC_PDF, SPEC_TITLE, SPEC_VERSION } from '../lib/spec'
+
 // Download link for the CF-OAUTH specification PDF, built from docs/spec at
 // deploy time and served as a static asset (see specPdf() in vite.config.ts).
 // Hidden when the build had no PDF (e.g. local dev without LaTeX).
 // `icon` is the header button; the default is the full link in Settings.
 export function SpecDownload({ icon = false }: { icon?: boolean }) {
-  if (!__SPEC_PDF__) return null
-  const title = `Download the Canvasflow Tenant Integration Specification v${__SPEC_VERSION__} (PDF)`
+  if (!SPEC_PDF) return null
+  const title = `Download the ${SPEC_TITLE} v${SPEC_VERSION} (PDF)`
   return (
     <a
-      href={__SPEC_PDF__}
+      href={SPEC_PDF}
       download
       className={icon
         ? 'p-1.5 rounded-lg text-ink2 hover:text-ink hover:bg-panel border border-transparent hover:border-rim transition-colors'
@@ -20,7 +22,7 @@ export function SpecDownload({ icon = false }: { icon?: boolean }) {
         <polyline points="7 10 12 15 17 10" />
         <line x1="12" y1="15" x2="12" y2="3" />
       </svg>
-      {!icon && `Spec v${__SPEC_VERSION__} (PDF)`}
+      {!icon && `Spec v${SPEC_VERSION} (PDF)`}
     </a>
   )
 }
