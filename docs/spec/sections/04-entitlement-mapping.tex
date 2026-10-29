@@ -202,7 +202,7 @@ The following specific behaviors MUST be understood by tenant implementors:
     flagging the absence as a possible hook misconfiguration. An absent claim means
     Canvasflow cannot distinguish a deliberate free-tier configuration from a broken hook.
 
-  \item \textbf{A present-but-non-array value MUST cause token rejection (401).} If the
+  \item \textbf{A present-but-non-array value MUST cause token rejection.} If the
     resolved claim name is present but its value is not a JSON array (e.g., it is a
     string, number, or object), the token is malformed and MUST be rejected. A malformed
     claim is a broken token, not a free-tier user.

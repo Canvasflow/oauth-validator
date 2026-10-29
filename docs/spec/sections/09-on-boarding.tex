@@ -38,7 +38,7 @@ technical lead retrieves them directly from the dashboard UI during Phase 2 (Ste
     Canvasflow approval)
   \item \texttt{client\_id}: the OAuth client ID for the Canvasflow SPA in the tenant's
     IdP
-  \item \texttt{audience}: \texttt{canvasflow-api}
+  \item \texttt{audience}: \texttt{canvasflow-api} (AWS Cognito: the app client id)
   \item \texttt{status}: \texttt{pending} --- the tenant cannot authenticate against
     production until this is changed to \texttt{active} at the conclusion of Phase~3
 \end{itemize}
@@ -196,7 +196,7 @@ checks:
     \texttt{typ: "JWT"} with \texttt{token\_use: "access"})
   \item \texttt{kid} present in the header
   \item \texttt{iss} exactly matches the registered issuer value
-  \item \texttt{aud} contains \texttt{"canvasflow-api"}
+  \item \texttt{aud} contains the registered audience (\texttt{"canvasflow-api"}; Cognito: the app client id)
   \item Entitlement claim present under one of the three supported names, as an array
   \item $\texttt{exp} - \texttt{iat} \leq 3600$~seconds
 \end{itemize}
@@ -237,8 +237,11 @@ token obtained in V1 and verifies:
 
 \textbf{V5 --- Expiry Behavior.} The validator verifies that:
 \begin{itemize}
-  \item An expired access token produces a 401 response from the Canvasflow GraphQL API
-  \item After the refresh flow, a new valid access token restores API access
+  \item An expired access token sent to the Canvasflow GraphQL API (with the PWA's
+    \texttt{app-key}) receives the generic \texttt{INVALID\_TOKEN} error
+    (\hyperref[sec:generic-error-responses]{\S11.6})
+  \item After the refresh flow, a new valid access token restores API access (the same
+    request returns data with no error)
 \end{itemize}
 
 \subsubsection{Evidence Submission}

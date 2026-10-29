@@ -246,15 +246,15 @@ Fix: update your hook's mapping table to emit \texttt{cf:issue:123} instead of
 Here's what happens: Canvasflow caches your public keys for up to one hour. If you
 remove the old key before that hour is up, new tokens (signed with the new key) arrive
 at Canvasflow, which looks in its cache for the old key ID (\texttt{kid}) and can't find
-the new one. Signature verification fails $\to$ 401 for the user.
+the new one. Signature verification fails $\to$ \texttt{INVALID\_TOKEN} for the user.
 
-However, an unknown \texttt{kid} immediately triggers a fresh fetch of your JWKS
-endpoint. So the very next request after the failure will likely succeed, because
+However, an unknown \texttt{kid} triggers a fresh fetch of your JWKS endpoint (at most
+once every 30~seconds). So the very next request after the failure will likely succeed, because
 Canvasflow will re-fetch and find your new key.
 
 Still, you should keep the old key in your JWKS for at least one hour after you start
 signing with the new one. This is the overlap window we ask for, and it prevents the
-brief 401 burst entirely. No-overlap rotations aren't catastrophic, but they're
+brief burst of rejections entirely. No-overlap rotations aren't catastrophic, but they're
 preventable. See \hyperref[sec:jwks-endpoint]{\S5.2.1} for the JWKS rotation requirements.
 
 \pagebreak
@@ -262,8 +262,8 @@ preventable. See \hyperref[sec:jwks-endpoint]{\S5.2.1} for the JWKS rotation req
 \paragraph{Q11: Can the \texttt{aud} claim be an array? I'm seeing an array with two
 values.}
 
-\textbf{Yes, that's fine. We look for \texttt{canvasflow-api} inside the array, not as
-the only value.}
+\textbf{Yes, that's fine. We look for \texttt{canvasflow-api} (Cognito: your app client
+id) inside the array, not as the only value.}
 
 JWT allows \texttt{aud} to be either a single string or an array of strings. Auth0 in
 particular puts both \texttt{canvasflow-api} and the Auth0 \texttt{/userinfo} URL into
@@ -283,11 +283,13 @@ See \hyperref[sec:required-payload-claims]{\S5.4} (the \texttt{aud} row in the r
 AWS Cognito doesn't follow the latest JWT access token standard 
 (\href{https://tools.ietf.org/html/rfc9068}{RFC~9068}) in the way it
 sets the \texttt{typ} header. Instead of \texttt{typ: "at+jwt"}, Cognito sets
-\texttt{typ: "JWT"} and adds a separate claim called \texttt{token\_use: "access"}.
+\texttt{typ: "JWT"} (or no \texttt{typ} at all) and adds a separate claim called
+\texttt{token\_use: "access"}. Cognito also cannot put \texttt{canvasflow-api} in
+\texttt{aud}, so your registered audience is your Cognito app client id.
 
 At onboarding, you declare that you're using Cognito. Canvasflow marks your tenant
 configuration with a flag that tells our validator: for this tenant, accept
-\texttt{typ: "JWT"} and check \texttt{token\_use: "access"} instead of the standard
+\texttt{typ: "JWT"} (or no \texttt{typ}) and check \texttt{token\_use: "access"} instead of the standard
 \texttt{typ} check. The end result is the same level of protection against token
 confusion attacks --- just using Cognito's own mechanism instead of the standard one.
 

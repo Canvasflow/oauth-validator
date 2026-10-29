@@ -1,0 +1,36 @@
+\section{Revision History}\label{sec:revision-history}
+
+\subsection{1.1.0 --- 2026-10-29}
+
+Aligns the specification with the Canvasflow Resource Server implementation. Tenants
+already integrated against 1.0.0 need no change unless noted.
+
+\begin{itemize}
+  \item \textbf{HS256 secret encoding (\S5.2.2).} The shared secret is exchanged as a
+    string and used as its UTF-8 bytes; it is not base64- or hex-decoded or trimmed. The
+    32-byte minimum applies to those bytes. \emph{Action:} HS256 tenants whose IdP
+    decodes the configured secret must configure the raw string instead.
+  \item \textbf{HS256 rotation (\S5.2.2).} A new secret is delivered under a new
+    \texttt{kid}; several secrets can be valid at once during the one-hour overlap.
+  \item \textbf{HS256 storage (\S3.3.4, \S11.5).} AES-256-GCM at the application layer
+    under a Canvasflow-managed master key (a KMS is one option, not a requirement); each
+    ciphertext is bound to its tenant configuration and \texttt{kid}; no plaintext
+    caching.
+  \item \textbf{Error responses (\S3.3.5, \S11.6, V5).} Token rejections are the GraphQL
+    error \texttt{INVALID\_TOKEN} (generic, \texttt{data: null}), not HTTP~401 with
+    \texttt{WWW-Authenticate}. V5 checks for this error.
+  \item \textbf{Cognito (\S5.3.1, \S5.4, \S6.2).} \texttt{typ} may also be absent;
+    \texttt{aud} must contain the Cognito app client id (the registered audience);
+    access-token customization requires the Essentials or Plus feature plan.
+  \item \textbf{JWKS re-fetch (\S3.3.3, \S5.2.1, \S11.4).} An unknown \texttt{kid}
+    triggers a re-fetch at most once every 30~seconds per JWKS URL.
+  \item \textbf{Configuration selection (\S1.5.3).} Selected from the PWA's
+    \texttt{app-key}; the token's \texttt{iss} must match it.
+  \item \textbf{Callback URI (\S7.7, \S10).} The authorization-request summary and the
+    checklist now use the tenant-specific callback URI of \S7.1, like the rest of the
+    specification.
+\end{itemize}
+
+\subsection{1.0.0 --- 2026-07-15}
+
+Initial release.
