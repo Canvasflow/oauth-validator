@@ -21,6 +21,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # The spec PDF ships with the app (download link in the header). Same
+      # toolchain as build-spec.yml; the Vite build picks up docs/build/*.pdf.
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-full latexmk
+
+      - name: Build spec PDF
+        run: make pdf
+        working-directory: docs
+
       - name: Build
         run: npm run build
 

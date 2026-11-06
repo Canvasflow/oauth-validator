@@ -212,7 +212,7 @@ tenant's IdP:
 \endhead
 \texttt{response\_type}       & MUST           & \texttt{code} \\[4pt]
 \texttt{client\_id}           & MUST           & Tenant-assigned client ID for the Canvasflow SPA \\[4pt]
-\texttt{redirect\_uri}        & MUST           & \texttt{https://app.canvasflow.io/callback} \\[4pt]
+\texttt{redirect\_uri}        & MUST           & \texttt{https://www.<tenant-domain>/callback} (\S7.1) \\[4pt]
 \texttt{scope}                & MUST           & At minimum \texttt{openid}; additional scopes at tenant's discretion \\[4pt]
 \texttt{code\_challenge}      & MUST           & Derived from \texttt{code\_verifier} per \hyperref[sec:code-challenge-derivation]{\S7.3.2} \\[4pt]
 \texttt{code\_challenge\_method} & MUST        & \texttt{S256} \\[4pt]

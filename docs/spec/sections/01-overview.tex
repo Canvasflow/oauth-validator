@@ -12,7 +12,7 @@ issue access tokens that the Canvasflow Resource Server will accept, the entitle
 model by which content access is granted, the onboarding process and mandatory
 validation gate, and the guarantees Canvasflow provides in return.
 
-This specification is version 1.0.0 and is the single canonical reference for 
+This specification is version \specversion{} and is the single canonical reference for 
 all new integrations.
 
 \subsection{Division of Trust}
@@ -118,3 +118,10 @@ the requirements of this specification(\hyperref[sec:entitlement-mapping]{\S4}).
     \caption{Tenant Request Sequence Diagram} % Caption for the image
     \label{fig:request} % Used for cross-referencing
 \end{figure}
+
+\textit{Note (v1.1.0).} The diagram shows the tenant configuration being looked up by the
+token's \texttt{iss}. The Resource Server instead selects the configuration from the PWA
+the request is for (its \texttt{app-key}), then requires the token's \texttt{iss} to equal
+the configured issuer. A token for another IdP is therefore rejected even if that IdP is
+also registered with Canvasflow. Rejections use the generic \texttt{INVALID\_TOKEN} error
+(\hyperref[sec:generic-error-responses]{\S11.6}), not HTTP~401.

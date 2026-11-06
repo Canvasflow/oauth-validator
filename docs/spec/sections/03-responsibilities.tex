@@ -124,20 +124,27 @@ what the signed token encodes.
 
 Canvasflow MUST fetch tenant JWKS documents server-side only and MUST cache them with a
 TTL of one hour. An incoming token whose \texttt{kid} is not found in the cache triggers
-an immediate JWKS re-fetch. Canvasflow MUST NOT serve stale JWKS keys when a re-fetch
-fails; it MUST reject the token. JWKS key material is never exposed to clients.
+a JWKS re-fetch, rate-limited to at most one re-fetch per JWKS URL every 30~seconds so
+that tokens carrying random \texttt{kid} values cannot flood the tenant's endpoint.
+Canvasflow MUST NOT serve stale JWKS keys when a re-fetch fails; it MUST reject the
+token. JWKS key material is never exposed to clients.
 
 \subsubsection{HS256 Secret Storage}
 
 Canvasflow MUST store HS256 shared secrets encrypted at the application layer using
-AES-256-GCM with a KMS-managed key. Secrets MUST never appear in logs or error
-responses. Canvasflow MUST notify the affected tenant within 24~hours of any confirmed
+AES-256-GCM under a master key that Canvasflow manages outside the database (a KMS or
+an application secret held only by the services that read and write tenant secrets).
+Each stored secret MUST be cryptographically bound to its tenant configuration and
+\texttt{kid}, so that a ciphertext copied to another tenant's record cannot be
+decrypted. Plaintext secrets MUST NOT be cached; they are decrypted per verification.
+Secrets MUST never appear in logs or error responses. Canvasflow MUST notify the affected tenant within 24~hours of any confirmed
 or suspected compromise of a stored HS256 secret.
 
 \subsubsection{Generic Error Responses}
 
-Canvasflow MUST return generic 401 responses on all token validation failures. The
-response MUST NOT reveal which validation step failed, which tenant was involved, or
+Canvasflow MUST return the same generic rejection on all token validation failures:
+the GraphQL error \texttt{INVALID\_TOKEN} described in
+\hyperref[sec:generic-error-responses]{\S11.6}. The response MUST NOT reveal which validation step failed, which tenant was involved, or
 which claim was absent or malformed. Detailed failure reasons are logged server-side and
 correlated by \texttt{jti}. This policy is a security requirement; it prevents both
 tenant enumeration and targeted token-forgery attacks.

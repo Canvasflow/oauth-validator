@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
+import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, DEFAULT_AUDIENCE, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
+import { SpecDownload } from './SpecDownload'
+import { buildConfigExport, downloadConfigExport } from '../lib/config-export'
+import { SPEC_PDF } from '../lib/spec'
 
 interface Props {
   onClose: () => void
@@ -17,7 +20,16 @@ const EMPTY_FORM = {
   verificationMethod:    'jwks' as VerificationMethod,
   jwksUri:               '',
   secret:                '',
+  expectedAudience:      '',
+  cognitoMode:           false,
+  graphqlUrl:            '',
+  appKey:                '',
 }
+
+// The Canvasflow Resource Server and Specification sections are hidden for
+// now; their values still load from and save to the stored config untouched.
+const SHOW_RESOURCE_SERVER = false
+const SHOW_SPECIFICATION   = false
 
 const inputClass = 'w-full bg-canvas border border-rim text-ink text-sm rounded-lg px-3 py-2 placeholder:text-ink3 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-colors'
 const inputMonoClass = `${inputClass} font-mono`
@@ -39,6 +51,10 @@ export function SettingsDialog({ onClose }: Props) {
     verificationMethod:    existing?.verificationMethod    ?? EMPTY_FORM.verificationMethod,
     jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
     secret:                existing?.secret                ?? EMPTY_FORM.secret,
+    expectedAudience:      existing?.expectedAudience      ?? EMPTY_FORM.expectedAudience,
+    cognitoMode:           existing?.cognitoMode           ?? EMPTY_FORM.cognitoMode,
+    graphqlUrl:            existing?.graphqlUrl            ?? EMPTY_FORM.graphqlUrl,
+    appKey:                existing?.appKey                ?? EMPTY_FORM.appKey,
   })
 
   useEffect(() => {
@@ -50,7 +66,7 @@ export function SettingsDialog({ onClose }: Props) {
     return () => el.removeEventListener('close', handleNativeClose)
   }, [onClose])
 
-  const set = (key: keyof typeof form) =>
+  const set = (key: Exclude<keyof typeof form, 'cognitoMode'>) =>
     (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm(prev => ({ ...prev, [key]: e.target.value }))
 
@@ -60,23 +76,35 @@ export function SettingsDialog({ onClose }: Props) {
   const setFlow = (e: React.ChangeEvent<HTMLSelectElement>) =>
     setForm(prev => ({ ...prev, flow: e.target.value as AuthFlow }))
 
+  const buildConfig = (): OAuthConfig => ({
+    issuer:                form.issuer.trim(),
+    authorizationEndpoint: form.authorizationEndpoint.trim(),
+    tokenEndpoint:         form.tokenEndpoint.trim(),
+    clientId:              form.clientId.trim(),
+    redirectUri:           form.redirectUri.trim(),
+    scope:                 form.scope.trim(),
+    audience:              form.audience.trim() || undefined,
+    flow:                  form.flow,
+    verificationMethod:    form.verificationMethod,
+    jwksUri:               form.verificationMethod === 'jwks'   ? (form.jwksUri.trim() || undefined) : undefined,
+    // Not trimmed: the secret's exact UTF-8 bytes are the HMAC key (CF-OAUTH §5.2.2).
+    secret:                form.verificationMethod === 'secret' ? (form.secret || undefined)  : undefined,
+    expectedAudience:      form.expectedAudience.trim() || undefined,
+    cognitoMode:           form.cognitoMode || undefined,
+    graphqlUrl:            form.graphqlUrl.trim() || undefined,
+    appKey:                form.appKey.trim() || undefined,
+  })
+
   const handleSave = () => {
-    const config: OAuthConfig = {
-      issuer:                form.issuer.trim(),
-      authorizationEndpoint: form.authorizationEndpoint.trim(),
-      tokenEndpoint:         form.tokenEndpoint.trim(),
-      clientId:              form.clientId.trim(),
-      redirectUri:           form.redirectUri.trim(),
-      scope:                 form.scope.trim(),
-      audience:              form.audience.trim() || undefined,
-      flow:                  form.flow,
-      verificationMethod:    form.verificationMethod,
-      jwksUri:               form.verificationMethod === 'jwks'   ? (form.jwksUri.trim() || undefined) : undefined,
-      secret:                form.verificationMethod === 'secret' ? (form.secret.trim() || undefined)  : undefined,
-    }
-    saveOAuthConfig(config)
+    saveOAuthConfig(buildConfig())
     dialogRef.current?.close()
   }
+
+  // Same file name and format as the dashboard's Export Configuration panel,
+  // built from the settings as currently shown in the form (saved or not).
+  // Unlike the dashboard, it always includes the HS256 shared secret.
+  const handleDownload = () =>
+    downloadConfigExport(buildConfigExport(buildConfig(), { includeSecret: true }))
 
   const handleReset = () => {
     resetOAuthConfig()
@@ -91,7 +119,7 @@ export function SettingsDialog({ onClose }: Props) {
     form.clientId &&
     form.redirectUri &&
     form.scope &&
-    (form.verificationMethod === 'jwks' || form.secret.trim())
+    (form.verificationMethod === 'jwks' || form.secret)
   )
 
   return (
@@ -229,20 +257,69 @@ export function SettingsDialog({ onClose }: Props) {
                 </div>
                 <p className="text-xs text-ink3 leading-relaxed">
                   Stored in <code>localStorage</code>. Only use in dev / test environments.
+                  Used exactly as typed: its UTF-8 bytes are the HMAC key (at least 32 bytes).
                 </p>
               </div>
             )}
           </div>
+
+          {/* Canvasflow Resource Server section */}
+          {SHOW_RESOURCE_SERVER && (
+            <div className="flex flex-col gap-3">
+              <SectionLabel>Canvasflow Resource Server</SectionLabel>
+              <Field label="Expected aud" id="s-expected-aud" value={form.expectedAudience} onChange={set('expectedAudience')} placeholder={`${DEFAULT_AUDIENCE} (Cognito: your app client id)`} mono />
+              <label className="flex items-start gap-2.5 text-sm text-ink2 cursor-pointer" htmlFor="s-cognito">
+                <input
+                  id="s-cognito"
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.cognitoMode}
+                  onChange={(e) => setForm(prev => ({ ...prev, cognitoMode: e.target.checked }))}
+                />
+                <span>
+                  AWS Cognito mode (<code>typ_strict = false</code>): accept <code>typ</code> "JWT" or
+                  absent, and require <code>token_use</code> "access".
+                </span>
+              </label>
+              <Field label="GraphQL URL (V5, optional)" id="s-graphql" value={form.graphqlUrl} onChange={set('graphqlUrl')} placeholder="https://api.example.com/graphql" mono />
+              <Field label="PWA app-key (V5, optional)" id="s-app-key" value={form.appKey} onChange={set('appKey')} placeholder="the PWA's app-key" mono />
+            </div>
+          )}
+
+          {/* Specification section (hidden when the build has no PDF) */}
+          {SHOW_SPECIFICATION && SPEC_PDF && (
+            <div className="flex flex-col gap-3">
+              <SectionLabel>Specification</SectionLabel>
+              <p className="text-sm text-ink2 leading-relaxed">
+                The Canvasflow Tenant Integration Specification (CF-OAUTH) these checks follow.
+              </p>
+              <SpecDownload />
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-rim bg-panel rounded-b-2xl flex-shrink-0">
-          <button
-            className="text-sm font-medium px-3.5 py-2 rounded-xl text-ink2 border border-rim2 hover:bg-rim hover:text-ink transition-colors"
-            onClick={handleReset}
-          >
-            Reset all
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="text-sm font-medium px-3.5 py-2 rounded-xl text-ink2 border border-rim2 hover:bg-rim hover:text-ink transition-colors"
+              onClick={handleReset}
+            >
+              Reset all
+            </button>
+            <button
+              className="p-2.5 rounded-xl text-ink2 border border-rim2 hover:bg-rim hover:text-ink transition-colors"
+              onClick={handleDownload}
+              title="Download the current settings as JSON"
+              aria-label="Download the current settings as JSON"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <button
               className="text-sm font-medium px-3.5 py-2 rounded-xl text-ink2 border border-rim2 hover:bg-panel hover:text-ink transition-colors"
