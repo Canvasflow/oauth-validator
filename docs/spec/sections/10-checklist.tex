@@ -21,7 +21,7 @@ The tenant's technical lead completes these items.
     \begin{itemize}[label=$\square$, leftmargin=2em]
       \item Grant type: Authorization Code
       \item PKCE: enabled, S256 method required
-      \item Redirect URI: \texttt{https://app.canvasflow.io/callback} (exact match, no
+      \item Redirect URI: \texttt{https://www.<tenant-domain>/callback} (exact match, no
         trailing slash)
       \item Token endpoint authentication: none (public client --- no client secret)
       \item Access token format: JWT with \texttt{typ: "at+jwt"} in header
@@ -102,7 +102,7 @@ checks before evidence is submitted.
         \texttt{token\_use: "access"})
       \item \texttt{kid} present in header
       \item \texttt{iss} exactly matches registered value
-      \item \texttt{aud} contains \texttt{"canvasflow-api"}
+      \item \texttt{aud} contains the registered audience (\texttt{"canvasflow-api"}; Cognito: app client id)
       \item Entitlement claim present as an array under one of the three supported names
       \item $\texttt{exp} - \texttt{iat} \leq 3600$~seconds
     \end{itemize}
@@ -116,8 +116,8 @@ checks before evidence is submitted.
     \end{itemize}
   \item \textbf{V4 --- Refresh Flow:} Refresh grant succeeds; new access token carries
     freshly evaluated entitlements
-  \item \textbf{V5 --- Expiry Behavior:} Expired token returns 401; refresh restores API
-    access
+  \item \textbf{V5 --- Expiry Behavior:} Expired token receives \texttt{INVALID\_TOKEN};
+    refresh restores API access
   \item Validator evidence (screenshots or export) submitted to Canvasflow for joint
     review
   \item Joint review completed; Canvasflow has confirmed all-green status

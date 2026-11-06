@@ -50,12 +50,13 @@ Canvasflow's JWKS caching behavior for JWKS-path tenants:
     responses.
 
   \item An incoming token whose \texttt{kid} is not present in the current cache WILL
-    trigger an \textbf{immediate re-fetch} of the tenant's JWKS endpoint. The token is
-    validated against the freshly fetched key set before being accepted or rejected.
+    trigger a \textbf{re-fetch} of the tenant's JWKS endpoint, at most once every
+    30~seconds per JWKS URL. The token is validated against the freshly fetched key set
+    before being accepted or rejected.
 
   \item If the JWKS re-fetch fails (network error, timeout, or non-200 response),
-    Canvasflow WILL NOT fall back to the stale cached key set. The token WILL be rejected
-    with 401. This policy prevents a degraded JWKS endpoint from becoming a persistent
+    Canvasflow WILL NOT fall back to the stale cached key set. The token WILL be
+    rejected. This policy prevents a degraded JWKS endpoint from becoming a persistent
     authentication bypass.
 
   \item Canvasflow WILL NOT cache JWKS data in a way that persists beyond the one-hour
@@ -68,8 +69,12 @@ For HS256-path tenants, Canvasflow commits to the following:
 
 \begin{itemize}
   \item Shared secrets are stored \textbf{encrypted at rest} using AES-256-GCM at the
-    application layer, with a KMS-managed encryption key. Database-level encryption alone
+    application layer, under a master key Canvasflow manages outside the database and
+    shares only with the services that read and write tenant secrets. Each ciphertext is
+    bound to its tenant configuration and \texttt{kid}. Database-level encryption alone
     is not the sole protection.
+
+  \item Secrets are decrypted per verification and never cached in plaintext.
 
   \item Secrets WILL NEVER appear in server logs, error responses, debugging output, or
     any client-visible channel, under any circumstances.
@@ -79,16 +84,26 @@ For HS256-path tenants, Canvasflow commits to the following:
     the nature and scope of the compromise and the steps taken to mitigate it.
 \end{itemize}
 
-\subsection{Generic Error Responses}
+\subsection{Generic Error Responses}\label{sec:generic-error-responses}
 
-All token validation failures WILL return the same generic 401 response:
+The Canvasflow API is a GraphQL API, and token rejections are reported the way it
+reports every other error: as a GraphQL error in the response body. All token
+validation failures WILL produce the same error, with no \texttt{data}:
 
-\begin{lstlisting}
-HTTP 401 Unauthorized
-WWW-Authenticate: Bearer error="invalid_token"
+\begin{lstlisting}[language=json]
+{
+  "errors": [
+    {
+      "message": "invalid token",
+      "extensions": { "code": "INVALID_TOKEN" }
+    }
+  ],
+  "data": null
+}
 \end{lstlisting}
 
-The response body WILL contain only a generic error message. It WILL NOT reveal:
+Clients MUST treat \texttt{extensions.code == "INVALID\_TOKEN"} as ``the access token
+was rejected'' (refresh it, or sign in again). The response WILL NOT reveal:
 \begin{itemize}
   \item Which validation step failed (e.g., ``expired token'' vs.\ ``invalid signature'')
   \item Which tenant's token was presented

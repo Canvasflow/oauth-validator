@@ -42,8 +42,8 @@ publishes the corresponding public keys at a stable JSON Web Key Set (JWKS) endp
   \item \textbf{Key rotation:} the tenant MUST publish the new key alongside the outgoing
     key for a minimum overlap window of one hour before removing the outgoing key.
     Canvasflow resolves \texttt{kid} dynamically against a one-hour cache; an unknown
-    \texttt{kid} triggers an immediate re-fetch. The one-hour overlap window is required
-    to prevent transient 401 errors during rotation.
+    \texttt{kid} triggers a re-fetch (at most once every 30~seconds per JWKS URL). The
+    one-hour overlap window is required to prevent transient rejections during rotation.
 \end{itemize}
 
 \begin{table}[htbp]
@@ -74,16 +74,23 @@ and documented by Canvasflow before use.
 
 \begin{itemize}
   \item Algorithm MUST be HS256.
-  \item The shared secret MUST be at minimum 32~bytes (256~bits) of cryptographically
-    random data. A secret shorter than 32~bytes MUST be rejected.
+  \item The shared secret is exchanged as a \textbf{string}. Both parties MUST use the
+    \textbf{UTF-8 bytes of that string} as the HMAC key --- the string MUST NOT be
+    base64- or hex-decoded first, and MUST NOT be trimmed. IdPs or libraries that decode
+    the configured secret before signing will fail signature verification (V2).
+  \item The secret MUST be at minimum 32~bytes (256~bits) when encoded as UTF-8, and
+    SHOULD be generated from a cryptographically random source. A secret shorter than
+    32~bytes MUST be rejected.
   \item The \texttt{kid} header claim MUST be present in every issued token and MUST
-    match a known secret version in Canvasflow's configuration. This supports rotation.
+    match a known secret version in Canvasflow's configuration. Canvasflow keeps one
+    secret per \texttt{kid}, so several secrets can be valid at once during a rotation.
   \item The tenant MUST share the secret with Canvasflow via a secure channel --- never
     via unencrypted email.
   \item \textbf{Key rotation:} the tenant MUST notify Canvasflow before rotating the
-    secret, provide the new secret via a secure channel, and maintain the outgoing secret
-    as valid under its current \texttt{kid} for at minimum one hour after the new secret
-    begins signing tokens.
+    secret, provide the new secret under a \textbf{new} \texttt{kid} via a secure channel,
+    and keep the outgoing secret valid under its current \texttt{kid} for at minimum one
+    hour after the new secret begins signing tokens. Canvasflow schedules the outgoing
+    \texttt{kid}'s retirement at the end of that window.
 \end{itemize}
 
 \textbf{Justification for JWKS over HS256.} The following four considerations make JWKS
@@ -137,13 +144,15 @@ performed before any payload claim is inspected.
 
 
 
-\textbf{Cognito exception.} AWS Cognito emits \texttt{typ: "JWT"} and
-\texttt{token\_use: "access"} instead of \texttt{typ: "at+jwt"}. This is a documented
+\textbf{Cognito exception.} AWS Cognito emits \texttt{typ: "JWT"} --- or no
+\texttt{typ} header at all --- and \texttt{token\_use: "access"} instead of
+\texttt{typ: "at+jwt"}. This is a documented
 non-compliance with \href{https://datatracker.ietf.org/doc/html/rfc9068}{RFC~9068}. Canvasflow accommodates this via a per-tenant
 \texttt{typ\_strict} configuration flag. When a tenant's configuration carries
 \texttt{typ\_strict = false} (set at onboarding for Cognito tenants), the Resource
-Server accepts \texttt{typ: "JWT"} and enforces \texttt{token\_use == "access"} as a
-substitute check. Tenants using Cognito MUST declare this at onboarding. All other
+Server accepts \texttt{typ: "JWT"} or an absent \texttt{typ}, and enforces
+\texttt{token\_use == "access"} as a substitute check (Cognito ID tokens carry
+\texttt{token\_use: "id"} and are rejected). Tenants using Cognito MUST declare this at onboarding. All other
 tenants MUST produce \texttt{typ: "at+jwt"}.
 
 \subsubsection{\texttt{alg} --- Signing Algorithm (RFC~8725~\S3.1)}
@@ -186,9 +195,11 @@ The following claims MUST be present in the JWT payload of every access token:
   The \texttt{sub} value MUST remain stable across
   sessions for the same user. \\[6pt]
 \texttt{aud} & string or array &
-  MUST contain \texttt{"canvasflow-api"}. MAY be an array of strings
-  (\href{https://datatracker.ietf.org/doc/html/rfc7519\#section-4.1.3}{RFC~7519~\S4.1.3} 
-  permits arrays). Validation passes if \texttt{"canvasflow-api"} is
+  MUST contain the audience registered for the tenant: \texttt{"canvasflow-api"}, or,
+  for AWS Cognito (whose access-token customization cannot set \texttt{aud}), the
+  Cognito app client id. MAY be an array of strings
+  (\href{https://datatracker.ietf.org/doc/html/rfc7519\#section-4.1.3}{RFC~7519~\S4.1.3}
+  permits arrays). Validation passes if the registered audience is
   \emph{present} in the \texttt{aud} value --- it need not be the only value. \\[6pt]
 \texttt{iat} & number &
   Unix timestamp of issuance (seconds since epoch). MUST NOT be more than 60~seconds in

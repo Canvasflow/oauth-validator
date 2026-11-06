@@ -7,6 +7,8 @@ import { SignatureValidator } from "./SignatureValidator";
 import { TokenRefresh } from "./TokenRefresh";
 import { SettingsDialog } from "./SettingsDialog";
 import { ThemeToggle } from "./ThemeToggle";
+import { CanvasflowChecks } from "./CanvasflowChecks";
+import { ConfigExport } from "./ConfigExport";
 
 export function DashboardScreen() {
   const navigate = useNavigate();
@@ -99,8 +101,10 @@ export function DashboardScreen() {
           </div>
 
           <TokenInspector tokens={tokens} />
+          <CanvasflowChecks accessToken={tokens.accessToken} />
           <SignatureValidator accessToken={tokens.accessToken} />
           <TokenRefresh tokens={tokens} onRefreshed={setTokens} />
+          <ConfigExport />
         </main>
       </div>
     </>

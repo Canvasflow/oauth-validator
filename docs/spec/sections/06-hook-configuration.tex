@@ -37,8 +37,11 @@ AWS Cognito &
   \wrapcode{claimsAndScopeOverrideDetails.accessTokenGeneration.claimsToAddOrOverride}
   to set the claim. &
   Bare names (\texttt{entitlements}, \texttt{resources}) generally work.
-  \texttt{cf:entitlements} is also supported. See Cognito \texttt{typ}/\texttt{token\_use}
-  note in \hyperref[sec:token-type]{\S5.3.1}. \\[8pt]
+  \texttt{cf:entitlements} is also supported. Access-token customization (event
+  \textbf{V2\_0}) requires the Cognito \textbf{Essentials} or \textbf{Plus} feature
+  plan. See the Cognito \texttt{typ}/\texttt{token\_use} note in
+  \hyperref[sec:token-type]{\S5.3.1} and the \texttt{aud} row in
+  \hyperref[sec:required-payload-claims]{\S5.4}. \\[8pt]
 Okta &
   Token Inline Hook --- return 
   \wrapcode{commands[].value.op = "add"} with

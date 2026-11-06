@@ -113,7 +113,7 @@ MUST NOT be sent to endpoints outside their defined routing scope.
 
 The Canvasflow GraphQL API MUST NOT receive the ID token or the refresh token under any
 circumstances. An ID token presented to the API would fail the \texttt{typ: "at+jwt"}
-check and be rejected with 401. A refresh token presented to the API would similarly be rejected.
+check and receive the generic \texttt{INVALID\_TOKEN} rejection (\hyperref[sec:generic-error-responses]{\S11.6}). A refresh token presented to the API would similarly be rejected.
 
 \subsection{Client Storage (Informative)}
 

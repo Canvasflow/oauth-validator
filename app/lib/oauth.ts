@@ -4,7 +4,7 @@
 
 import { getOAuthConfig } from './config'
 import { generateCodeVerifier, generateCodeChallenge, generateState } from './pkce'
-import { saveAuthRequest, loadAuthRequest, clearAuthRequest, saveTokens, type StoredTokens } from './storage'
+import { saveAuthRequest, loadAuthRequest, clearAuthRequest, saveTokens, loadStateHistory, type StoredTokens } from './storage'
 import { decodeJwt } from './jwt'
 
 interface TokenResponse {
@@ -109,11 +109,7 @@ async function handleCodeCallback(): Promise<CallbackResult> {
 
   if (returnedState !== saved.state) {
     clearAuthRequest()
-    return {
-      ok: false,
-      error: 'state_mismatch',
-      errorDescription: 'State parameter mismatch. Possible CSRF attack or stale session.',
-    }
+    return stateMismatch(returnedState, saved.state)
   }
 
   if (!saved.codeVerifier) {
@@ -185,11 +181,7 @@ function handleImplicitCallback(): CallbackResult {
 
   if (returnedState !== saved.state) {
     clearAuthRequest()
-    return {
-      ok: false,
-      error: 'state_mismatch',
-      errorDescription: 'State parameter mismatch. Possible CSRF attack or stale session.',
-    }
+    return stateMismatch(returnedState, saved.state)
   }
 
   if (idToken && saved.nonce) {
@@ -213,6 +205,33 @@ function handleImplicitCallback(): CallbackResult {
   window.history.replaceState({}, document.title, clean.pathname)
 
   return { ok: true }
+}
+
+// Says which way the returned state differs, so a misbehaving IdP can be told
+// apart from a stale or doubled request. The state is a one-time value already
+// consumed at this point, so showing it does not weaken the CSRF check.
+function stateMismatch(returned: string | null, expected: string): CallbackResult {
+  const url = new URL(window.location.href)
+  const inQuery = url.searchParams.get('state')
+  const inHash  = new URLSearchParams(url.hash.replace(/^#/, '')).get('state')
+  let detail: string
+  if (returned === null) {
+    detail = inQuery !== null || inHash !== null
+      ? `The IdP returned state in the ${inQuery !== null ? 'query string' : 'URL fragment'}, not where this flow expects it.`
+      : 'The IdP returned no state parameter. It must echo the state it received (RFC 6749 §4.1.2 / §4.2.2).'
+  } else if (returned === expected.trim() || decodeURIComponent(returned) === expected) {
+    detail = `Expected "${expected}", received "${returned}". The IdP altered the value (encoding or whitespace); it must echo it byte for byte.`
+  } else {
+    // History index 0 is the current attempt, so an earlier one is index >= 1.
+    const ago = loadStateHistory().indexOf(returned)
+    detail = `Expected "${expected}", received "${returned}". ` + (ago >= 1
+      ? `The received value was sent by this tab ${ago} sign-in attempt${ago === 1 ? '' : 's'} earlier, not by the current one: `
+        + 'the IdP is replaying a cached authorization request instead of using the one it was just sent. '
+        + 'Clear the IdP\'s session or cookies, or fix the IdP so each /authorize request is handled on its own.'
+      : 'This tab never sent the received value: the sign-in was started in another tab or window, or before this tab\'s session began. '
+        + 'Close other tabs of this app and start again from this one.')
+  }
+  return { ok: false, error: 'state_mismatch', errorDescription: `State parameter mismatch. ${detail}` }
 }
 
 // ── Step 3: Refresh tokens ────────────────────────────────────────────────

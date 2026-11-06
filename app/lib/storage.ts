@@ -15,7 +15,12 @@ const KEYS = {
   CODE_VERIFIER: 'pkce.code_verifier',
   STATE:         'pkce.state',
   NONCE:         'pkce.nonce',
+  STATE_HISTORY: 'pkce.state_history',
 } as const
+
+// How many earlier states to remember, newest first. Only used to explain a
+// state mismatch; the CSRF check itself compares against the current state.
+const STATE_HISTORY_LIMIT = 10
 
 const isClient = () => typeof window !== 'undefined'
 
@@ -26,6 +31,8 @@ const isClient = () => typeof window !== 'undefined'
 export function saveAuthRequest(state: string, codeVerifier?: string, nonce?: string): void {
   if (!isClient()) return
   sessionStorage.setItem(KEYS.STATE, state)
+  const history = [state, ...loadStateHistory().filter(s => s !== state)].slice(0, STATE_HISTORY_LIMIT)
+  sessionStorage.setItem(KEYS.STATE_HISTORY, JSON.stringify(history))
   if (codeVerifier) sessionStorage.setItem(KEYS.CODE_VERIFIER, codeVerifier)
   else sessionStorage.removeItem(KEYS.CODE_VERIFIER)
   if (nonce) sessionStorage.setItem(KEYS.NONCE, nonce)
@@ -40,6 +47,17 @@ export function loadAuthRequest(): { state: string; codeVerifier?: string; nonce
     state,
     codeVerifier: sessionStorage.getItem(KEYS.CODE_VERIFIER) ?? undefined,
     nonce:        sessionStorage.getItem(KEYS.NONCE)         ?? undefined,
+  }
+}
+
+/** States sent from this tab, newest first (index 0 is the current attempt). */
+export function loadStateHistory(): string[] {
+  if (!isClient()) return []
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem(KEYS.STATE_HISTORY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : []
+  } catch {
+    return []
   }
 }
 

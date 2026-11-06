@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { decodeJwt, extractEntitlements, formatExpiry, isExpired } from '../lib/jwt'
-import { getOAuthConfig } from '../lib/config'
+import { getExpectedAudience, getOAuthConfig } from '../lib/config'
 import { ClaimRow } from './ClaimRow'
 import type { StoredTokens } from '../lib/storage'
 
@@ -21,6 +21,13 @@ export function TokenInspector({ tokens }: Props) {
   const idDecoded = tokens.idToken ? decodeJwt(tokens.idToken) : null
 
   const config = getOAuthConfig()
+  const expectedAud = getExpectedAudience(config)
+  const audValue = accessDecoded?.payload.aud
+  const audOk = Array.isArray(audValue) ? audValue.includes(expectedAud) : audValue === expectedAud
+  const typ = accessDecoded?.header.typ
+  const typOk = config?.cognitoMode
+    ? typ === undefined || typ === 'JWT'
+    : typ?.toLowerCase().replace(/^application\//, '') === 'at+jwt'
   const showSecret = config?.verificationMethod === 'secret' && !!config.secret
 
   const handleCopy = async (text: string, label: string) => {
@@ -60,7 +67,7 @@ export function TokenInspector({ tokens }: Props) {
             <>
               <ClaimsSection title="Header">
                 <Note>Decoded client-side (no signature check). Use the Signature Verification panel below to cryptographically validate.</Note>
-                <ClaimRow name="typ" value={accessDecoded.header.typ} description="Token type — should be at+jwt per RFC 9068" highlight={accessDecoded.header.typ !== 'at+jwt'} />
+                <ClaimRow name="typ" value={accessDecoded.header.typ} description={config?.cognitoMode ? 'Token type — Cognito mode: JWT or absent, with token_use "access"' : 'Token type — must be at+jwt per RFC 9068'} highlight={!typOk} />
                 <ClaimRow name="alg" value={accessDecoded.header.alg} description="Signing algorithm" />
                 <ClaimRow name="kid" value={accessDecoded.header.kid} description="Key ID — used to select the verification key from JWKS" />
               </ClaimsSection>
@@ -68,7 +75,7 @@ export function TokenInspector({ tokens }: Props) {
               <ClaimsSection title="Standard Claims">
                 <ClaimRow name="iss" value={accessDecoded.payload.iss} description="Issuer — identifies the IdP" />
                 <ClaimRow name="sub" value={accessDecoded.payload.sub} description="Subject — stable opaque user identifier" />
-                <ClaimRow name="aud" value={accessDecoded.payload.aud} description='Audience — must equal "canvasflow-api"' highlight={accessDecoded.payload.aud !== 'canvasflow-api'} />
+                <ClaimRow name="aud" value={accessDecoded.payload.aud} description={`Audience — must contain "${expectedAud}"`} highlight={!audOk} />
                 <ClaimRow name="jti" value={accessDecoded.payload.jti} description="JWT ID — unique per token" />
                 {accessDecoded.payload.exp !== undefined && (
                   <ClaimRow name="exp" value={`${accessDecoded.payload.exp} (${formatExpiry(accessDecoded.payload.exp)})`} description="Expiry timestamp" highlight={isExpired(accessDecoded.payload.exp)} />
