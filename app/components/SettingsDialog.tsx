@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getOAuthConfig, saveOAuthConfig, resetOAuthConfig, DEFAULT_AUDIENCE, type OAuthConfig, type VerificationMethod, type AuthFlow } from '../lib/config'
 import { SpecDownload } from './SpecDownload'
-import { buildConfigExport, downloadConfigExport } from '../lib/config-export'
+import { buildConfigExport, downloadConfigExport, parseConfigImport } from '../lib/config-export'
 import { SPEC_PDF } from '../lib/spec'
 
 interface Props {
@@ -31,6 +31,34 @@ const EMPTY_FORM = {
 const SHOW_RESOURCE_SERVER = false
 const SHOW_SPECIFICATION   = false
 
+interface ImportStatus {
+  ok: boolean
+  name: string
+  messages: string[]
+}
+
+type Form = typeof EMPTY_FORM
+
+function formFromConfig(cfg: OAuthConfig | null): Form {
+  return {
+    issuer:                cfg?.issuer                ?? EMPTY_FORM.issuer,
+    authorizationEndpoint: cfg?.authorizationEndpoint ?? EMPTY_FORM.authorizationEndpoint,
+    tokenEndpoint:         cfg?.tokenEndpoint         ?? EMPTY_FORM.tokenEndpoint,
+    clientId:              cfg?.clientId              ?? EMPTY_FORM.clientId,
+    redirectUri:           cfg?.redirectUri           ?? EMPTY_FORM.redirectUri,
+    scope:                 cfg?.scope                 ?? EMPTY_FORM.scope,
+    audience:              cfg?.audience              ?? EMPTY_FORM.audience,
+    flow:                  cfg?.flow                  ?? EMPTY_FORM.flow,
+    verificationMethod:    cfg?.verificationMethod    ?? EMPTY_FORM.verificationMethod,
+    jwksUri:               cfg?.jwksUri               ?? EMPTY_FORM.jwksUri,
+    secret:                cfg?.secret                ?? EMPTY_FORM.secret,
+    expectedAudience:      cfg?.expectedAudience      ?? EMPTY_FORM.expectedAudience,
+    cognitoMode:           cfg?.cognitoMode           ?? EMPTY_FORM.cognitoMode,
+    graphqlUrl:            cfg?.graphqlUrl            ?? EMPTY_FORM.graphqlUrl,
+    appKey:                cfg?.appKey                ?? EMPTY_FORM.appKey,
+  }
+}
+
 const inputClass = 'w-full bg-canvas border border-rim text-ink text-sm rounded-lg px-3 py-2 placeholder:text-ink3 focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 transition-colors'
 const inputMonoClass = `${inputClass} font-mono`
 
@@ -38,24 +66,34 @@ export function SettingsDialog({ onClose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const [showSecret, setShowSecret] = useState(false)
 
-  const existing = getOAuthConfig()
-  const [form, setForm] = useState({
-    issuer:                existing?.issuer                ?? EMPTY_FORM.issuer,
-    authorizationEndpoint: existing?.authorizationEndpoint ?? EMPTY_FORM.authorizationEndpoint,
-    tokenEndpoint:         existing?.tokenEndpoint         ?? EMPTY_FORM.tokenEndpoint,
-    clientId:              existing?.clientId              ?? EMPTY_FORM.clientId,
-    redirectUri:           existing?.redirectUri           ?? EMPTY_FORM.redirectUri,
-    scope:                 existing?.scope                 ?? EMPTY_FORM.scope,
-    audience:              existing?.audience              ?? EMPTY_FORM.audience,
-    flow:                  existing?.flow                  ?? EMPTY_FORM.flow,
-    verificationMethod:    existing?.verificationMethod    ?? EMPTY_FORM.verificationMethod,
-    jwksUri:               existing?.jwksUri               ?? EMPTY_FORM.jwksUri,
-    secret:                existing?.secret                ?? EMPTY_FORM.secret,
-    expectedAudience:      existing?.expectedAudience      ?? EMPTY_FORM.expectedAudience,
-    cognitoMode:           existing?.cognitoMode           ?? EMPTY_FORM.cognitoMode,
-    graphqlUrl:            existing?.graphqlUrl            ?? EMPTY_FORM.graphqlUrl,
-    appKey:                existing?.appKey                ?? EMPTY_FORM.appKey,
-  })
+  const [form, setForm] = useState(() => formFromConfig(getOAuthConfig()))
+  const [dragOver, setDragOver] = useState(false)
+  const [importResult, setImportResult] = useState<ImportStatus | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Validates the file and, only when it is valid, replaces every form field
+  // with its values. Nothing is saved until the user clicks Save.
+  const importFile = async (file: File) => {
+    const result = parseConfigImport(await file.text())
+    if (result.ok) {
+      setForm(formFromConfig(result.config))
+      setShowSecret(false)
+      setImportResult({ ok: true, name: file.name, messages: result.warnings })
+    } else {
+      setImportResult({ ok: false, name: file.name, messages: result.errors })
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = e.dataTransfer.files
+    if (files.length !== 1) {
+      setImportResult({ ok: false, name: '', messages: ['Drop a single .json file.'] })
+      return
+    }
+    void importFile(files[0])
+  }
 
   useEffect(() => {
     const el = dialogRef.current
@@ -110,6 +148,7 @@ export function SettingsDialog({ onClose }: Props) {
     resetOAuthConfig()
     setForm({ ...EMPTY_FORM, redirectUri: `${window.location.origin}/callback` })
     setShowSecret(false)
+    setImportResult(null)
   }
 
   const isValid = !!(
@@ -154,6 +193,75 @@ export function SettingsDialog({ onClose }: Props) {
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-6 py-5 flex flex-col gap-5">
+          {/* Import: drop or choose a config file */}
+          <div className="flex flex-col gap-2">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Import settings from a JSON file: drop it here or press to choose one"
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed px-4 py-5 text-center cursor-pointer transition-colors ${
+                dragOver ? 'border-brand bg-brand/10' : 'border-rim2 hover:border-ink3 hover:bg-panel'
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  fileInputRef.current?.click()
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'copy'
+                setDragOver(true)
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink3 pointer-events-none" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span className="text-sm font-medium text-ink2 pointer-events-none">Drop a configuration .json file here</span>
+              <span className="text-xs text-ink3 pointer-events-none">or click to choose one. Fields are filled in; nothing is saved until you click Save.</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void importFile(file)
+                  e.target.value = ''
+                }}
+              />
+            </div>
+
+            {importResult && (
+              <div
+                role={importResult.ok ? 'status' : 'alert'}
+                className={`text-sm rounded-xl px-4 py-2.5 leading-relaxed border ${
+                  !importResult.ok
+                    ? 'bg-bad/10 border-bad/30 text-bad'
+                    : importResult.messages.length
+                      ? 'bg-warn/10 border-warn/30 text-warn'
+                      : 'bg-ok/10 border-ok/30 text-ok'
+                }`}
+              >
+                <p className="font-medium">
+                  {importResult.ok
+                    ? `Filled the fields from ${importResult.name}. Review them, then Save.`
+                    : `Couldn't import${importResult.name ? ` ${importResult.name}` : ''}. The fields were not changed.`}
+                </p>
+                {importResult.messages.length > 0 && (
+                  <ul className="list-disc pl-5 mt-1 text-xs">
+                    {importResult.messages.map((m) => <li key={m}>{m}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
           <p className="text-sm text-ink2 leading-relaxed">
             Configure your OAuth 2.0 / OIDC provider. Values are saved in{' '}
             <code>localStorage</code> and persist across page refreshes.
