@@ -8,8 +8,7 @@ import { TokenRefresh } from "./TokenRefresh";
 import { SettingsDialog } from "./SettingsDialog";
 import { ThemeToggle } from "./ThemeToggle";
 import { CanvasflowChecks } from "./CanvasflowChecks";
-import { ApiProbe } from "./ApiProbe";
-import { SpecDownload } from "./SpecDownload";
+import { ConfigExport } from "./ConfigExport";
 
 export function DashboardScreen() {
   const navigate = useNavigate();
@@ -64,8 +63,6 @@ export function DashboardScreen() {
               </div>
             )}
 
-            <SpecDownload icon />
-
             <ThemeToggle />
 
             <button
@@ -107,7 +104,7 @@ export function DashboardScreen() {
           <CanvasflowChecks accessToken={tokens.accessToken} />
           <SignatureValidator accessToken={tokens.accessToken} />
           <TokenRefresh tokens={tokens} onRefreshed={setTokens} />
-          <ApiProbe accessToken={tokens.accessToken} />
+          <ConfigExport />
         </main>
       </div>
     </>
